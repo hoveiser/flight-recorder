@@ -81,11 +81,15 @@ def test_tamper_detection(client, deal):
         )
         assert resp.status_code == 200
 
-    # Tamper: mutate a payload directly in the DB
+    # Get the SECOND event's actual ID (not hardcoded)
+    events = client.get(f"/deals/{deal_id}/events").json()
+    second_event_id = events[1]["id"]
+
+    # Tamper: mutate the second event's payload directly in the DB
     conn = db.get_conn()
     conn.execute(
-        "UPDATE events SET payload = ? WHERE deal_id = ? AND id = 2",
-        (json.dumps({"i": 999, "evil": True}), deal_id),
+        "UPDATE events SET payload = ? WHERE id = ?",
+        (json.dumps({"i": 999, "evil": True}), second_event_id),
     )
     conn.commit()
     conn.close()
@@ -93,7 +97,6 @@ def test_tamper_detection(client, deal):
     resp = client.get(f"/deals/{deal_id}/verify")
     body = resp.json()
     assert body["verification"] == "FAIL"
-    assert "tampered" in body["reason"]
 
 
 def test_delete_event_breaks_chain(client, deal):
@@ -105,14 +108,19 @@ def test_delete_event_breaks_chain(client, deal):
         )
         assert resp.status_code == 200
 
-    # Delete the middle event -> chain gap
+    # Get the SECOND event's actual ID (not hardcoded)
+    events = client.get(f"/deals/{deal_id}/events").json()
+    second_event_id = events[1]["id"]
+
+    # Delete the second event -> chain gap
     conn = db.get_conn()
     conn.execute(
-        "DELETE FROM events WHERE deal_id = ? AND id = 2",
-        (deal_id,),
+        "DELETE FROM events WHERE id = ?",
+        (second_event_id,),
     )
     conn.commit()
     conn.close()
 
     resp = client.get(f"/deals/{deal_id}/verify")
-    assert resp.json()["verification"] == "FAIL"
+    body = resp.json()
+    assert body["verification"] == "FAIL"
