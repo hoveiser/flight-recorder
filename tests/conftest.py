@@ -1,5 +1,9 @@
 import os
+import sys
 import tempfile
+
+# Add project root to sys.path so 'src' is importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set temp DB BEFORE importing app so tests use isolated DB
 os.environ["FLIGHT_RECORDER_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
