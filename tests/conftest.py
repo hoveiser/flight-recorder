@@ -1,11 +1,11 @@
 import os
 import sys
 import tempfile
+import uuid
 
-# Add project root to sys.path so 'src' is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Set temp DB BEFORE importing app so tests use isolated DB
+# Set temp DB BEFORE importing app
 os.environ["FLIGHT_RECORDER_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 
 import pytest
@@ -22,11 +22,12 @@ def client():
 
 @pytest.fixture
 def deal(client):
-    """Create a fresh deal for each test"""
+    """Create a fresh deal with unique ID for each test"""
+    unique_id = f"deal_{uuid.uuid4().hex[:8]}"
     resp = client.post(
         "/deals",
         json={
-            "deal_id": "deal1",
+            "deal_id": unique_id,
             "definition_of_done": {
                 "deadline": "2026-09-10T00:00:00Z",
                 "success": "1000 valid rows",
