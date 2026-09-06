@@ -14,7 +14,7 @@ def test_create_deal(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["deal_id"] == "d1"
-    assert len(body["agreement_hash"]) == 64  # SHA-256 hex
+    assert len(body["agreement_hash"]) == 64
 
 
 def test_duplicate_deal_rejected(client):
@@ -36,11 +36,12 @@ def test_event_requires_deal(client):
 
 
 def test_record_events_and_chain(client, deal):
+    deal_id = deal["deal_id"]
     for i, etype in enumerate(["REQUEST", "RESPONSE", "DELIVERY"]):
         resp = client.post(
             "/events",
             json={
-                "deal_id": "deal1",
+                "deal_id": deal_id,
                 "actor": "agentA" if i != 2 else "agentB",
                 "event_type": etype,
                 "payload": {"seq": i},
@@ -50,59 +51,68 @@ def test_record_events_and_chain(client, deal):
         body = resp.json()
         assert len(body["event_hash"]) == 64
 
-    events = client.get("/deals/deal1/events").json()
+    events = client.get(f"/deals/{deal_id}/events").json()
     assert len(events) == 3
-    # Genesis link
     assert events[0]["previous_event_hash"] == "GENESIS"
-    # Each event links to the previous
     assert events[1]["previous_event_hash"] == events[0]["event_hash"]
     assert events[2]["previous_event_hash"] == events[1]["event_hash"]
 
 
 def test_verify_chain_pass(client, deal):
+    deal_id = deal["deal_id"]
     for i in range(3):
-        client.post(
+        resp = client.post(
             "/events",
-            json={"deal_id": "deal1", "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
+            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
         )
-    resp = client.get("/deals/deal1/verify")
+        assert resp.status_code == 200
+    resp = client.get(f"/deals/{deal_id}/verify")
     body = resp.json()
     assert body["verification"] == "PASS"
     assert body["events"] == 3
 
 
 def test_tamper_detection(client, deal):
+    deal_id = deal["deal_id"]
     for i in range(3):
-        client.post(
+        resp = client.post(
             "/events",
-            json={"deal_id": "deal1", "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
+            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
         )
+        assert resp.status_code == 200
 
     # Tamper: mutate a payload directly in the DB
     conn = db.get_conn()
-    conn.execute("UPDATE events SET payload = ? WHERE deal_id = 'deal1' AND id = 2",
-                 (json.dumps({"i": 999, "evil": True}),))
+    conn.execute(
+        "UPDATE events SET payload = ? WHERE deal_id = ? AND id = 2",
+        (json.dumps({"i": 999, "evil": True}), deal_id),
+    )
     conn.commit()
     conn.close()
 
-    resp = client.get("/deals/deal1/verify")
+    resp = client.get(f"/deals/{deal_id}/verify")
     body = resp.json()
     assert body["verification"] == "FAIL"
     assert "tampered" in body["reason"]
 
 
 def test_delete_event_breaks_chain(client, deal):
+    deal_id = deal["deal_id"]
     for i in range(3):
-        client.post(
+        resp = client.post(
             "/events",
-            json={"deal_id": "deal1", "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
+            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
         )
+        assert resp.status_code == 200
 
     # Delete the middle event -> chain gap
     conn = db.get_conn()
-    conn.execute("DELETE FROM events WHERE deal_id = 'deal1' AND id = 2")
+    conn.execute(
+        "DELETE FROM events WHERE deal_id = ? AND id = 2",
+        (deal_id,),
+    )
     conn.commit()
     conn.close()
 
-    resp = client.get("/deals/deal1/verify")
+    resp = client.get(f"/deals/{deal_id}/verify")
     assert resp.json()["verification"] == "FAIL"
