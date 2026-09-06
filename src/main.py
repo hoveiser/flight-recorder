@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 from . import db
 from .models import EventCreate, Event, DealCreate, Deal
 from .hash_chain import (
@@ -23,7 +23,7 @@ def create_deal(deal_in: DealCreate):
         definition_of_done=deal_in.definition_of_done,
         parties=deal_in.parties,
         agreement_hash=compute_agreement_hash(deal_in.definition_of_done),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.save_deal(deal)
     return deal
@@ -47,7 +47,7 @@ def record_event(event_in: EventCreate):
     previous_hash = last.event_hash if last else GENESIS
 
     payload_hash = compute_payload_hash(event_in.payload)
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(timezone.utc)
     event_hash = compute_event_hash(
         deal_id=event_in.deal_id,
         actor=event_in.actor,
@@ -58,7 +58,7 @@ def record_event(event_in: EventCreate):
     )
 
     event = Event(
-        id=0,  # will be set by DB
+        id=0,
         deal_id=event_in.deal_id,
         actor=event_in.actor,
         event_type=event_in.event_type,
@@ -91,7 +91,6 @@ def verify_chain(deal_id: str):
 
     expected_prev = GENESIS
     for i, ev in enumerate(events):
-        # Check previous link
         if ev.previous_event_hash != expected_prev:
             return {
                 "deal_id": deal_id,
@@ -99,7 +98,6 @@ def verify_chain(deal_id: str):
                 "reason": f"Event {i}: previous hash mismatch",
                 "events": len(events),
             }
-        # Recompute hash
         recomputed = compute_event_hash(
             deal_id=ev.deal_id,
             actor=ev.actor,

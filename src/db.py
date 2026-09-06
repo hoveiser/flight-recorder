@@ -1,11 +1,12 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from .models import Event, Deal
 
+import os
 
-DB_PATH = "flight_recorder.db"
+DB_PATH = os.environ.get("FLIGHT_RECORDER_DB", "flight_recorder.db")
 
 
 def get_conn():
@@ -131,5 +132,5 @@ def _row_to_event(row) -> Event:
         payload_hash=row["payload_hash"],
         previous_event_hash=row["previous_event_hash"],
         event_hash=row["event_hash"],
-        timestamp=datetime.fromisoformat(row["timestamp"]),
+        timestamp=datetime.fromisoformat(row["timestamp"]).replace(tzinfo=timezone.utc),
     )
