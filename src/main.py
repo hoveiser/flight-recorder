@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from . import db
-from .models import EventCreate, Event, DealCreate, Deal
+from .models import EventCreate, Event, DealCreate, Deal, DisputeCreate, Dispute
 from .hash_chain import (
     compute_payload_hash,
     compute_event_hash,
@@ -10,7 +10,7 @@ from .hash_chain import (
     GENESIS,
 )
 
-app = FastAPI(title="Flight Recorder", version="0.1.0")
+app = FastAPI(title="Flight Recorder", version="0.2.0")
 
 db.init_db()
 
@@ -81,15 +81,40 @@ def get_events(deal_id: str):
     return db.get_events(deal_id)
 
 
+@app.post("/deals/{deal_id}/dispute", response_model=Dispute)
+def file_dispute(deal_id: str, dispute_in: DisputeCreate):
+    deal = db.get_deal(deal_id)
+    if deal is None:
+        raise HTTPException(404, "Deal not found")
+    if dispute_in.party not in deal.parties:
+        raise HTTPException(403, "Only a party to the deal may file a dispute")
+
+    dispute = Dispute(
+        id=0,
+        deal_id=deal_id,
+        party=dispute_in.party,
+        claim=dispute_in.claim,
+        filed_at=datetime.now(timezone.utc),
+    )
+    db.save_dispute(dispute)
+    return dispute
+
+
+@app.get("/deals/{deal_id}/disputes", response_model=list[Dispute])
+def get_disputes(deal_id: str):
+    if db.get_deal(deal_id) is None:
+        raise HTTPException(404, "Deal not found")
+    return db.get_disputes(deal_id)
+
+
 @app.get("/deals/{deal_id}/verify")
 def verify_chain(deal_id: str):
     """Verify hash chain integrity - NO CACHING"""
     if db.get_deal(deal_id) is None:
         raise HTTPException(404, "Deal not found")
-    
-    # Force fresh read from DB
+
     events = db.get_events(deal_id)
-    
+
     if not events:
         return JSONResponse(
             content={"deal_id": deal_id, "verification": "PASS", "events": 0},
@@ -98,7 +123,6 @@ def verify_chain(deal_id: str):
 
     expected_prev = GENESIS
     for i, ev in enumerate(events):
-        # Check previous link
         if ev.previous_event_hash != expected_prev:
             return JSONResponse(
                 content={
@@ -110,7 +134,6 @@ def verify_chain(deal_id: str):
                 headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
             )
 
-        # Check payload integrity (recompute payload_hash from current payload)
         actual_payload_hash = compute_payload_hash(ev.payload)
         if actual_payload_hash != ev.payload_hash:
             return JSONResponse(
@@ -123,7 +146,6 @@ def verify_chain(deal_id: str):
                 headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
             )
 
-        # Recompute event hash
         recomputed = compute_event_hash(
             deal_id=ev.deal_id,
             actor=ev.actor,
@@ -154,3 +176,46 @@ def verify_chain(deal_id: str):
         },
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
     )
+
+
+@app.get("/deals/{deal_id}/case-file")
+def get_case_file(deal_id: str):
+    """Export a complete case file for adjudication (GenLayer-ready)"""
+    deal = db.get_deal(deal_id)
+    if deal is None:
+        raise HTTPException(404, "Deal not found")
+
+    events = db.get_events(deal_id)
+    disputes = db.get_disputes(deal_id)
+    verification = verify_chain(deal_id)
+
+    return {
+        "deal_id": deal_id,
+        "definition_of_done": deal.definition_of_done,
+        "agreement_hash": deal.agreement_hash,
+        "parties": deal.parties,
+        "created_at": deal.created_at.isoformat(),
+        "events": [
+            {
+                "id": ev.id,
+                "actor": ev.actor,
+                "event_type": ev.event_type,
+                "payload": ev.payload,
+                "payload_hash": ev.payload_hash,
+                "previous_event_hash": ev.previous_event_hash,
+                "event_hash": ev.event_hash,
+                "timestamp": ev.timestamp.isoformat(),
+            }
+            for ev in events
+        ],
+        "disputes": [
+            {
+                "id": d.id,
+                "party": d.party,
+                "claim": d.claim,
+                "filed_at": d.filed_at.isoformat(),
+            }
+            for d in disputes
+        ],
+        "chain_integrity": verification,
+    }

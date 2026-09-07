@@ -1,10 +1,10 @@
 import sqlite3
 import json
+import os
 from datetime import datetime, timezone
 from typing import Optional
-from .models import Event, Deal
+from .models import Event, Deal, Dispute
 
-import os
 
 DB_PATH = os.environ.get("FLIGHT_RECORDER_DB", "flight_recorder.db")
 
@@ -41,6 +41,18 @@ def init_db():
             previous_event_hash TEXT NOT NULL,
             event_hash TEXT NOT NULL,
             timestamp TEXT NOT NULL,
+            FOREIGN KEY (deal_id) REFERENCES deals(deal_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS disputes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            deal_id TEXT NOT NULL,
+            party TEXT NOT NULL,
+            claim TEXT NOT NULL,
+            filed_at TEXT NOT NULL,
             FOREIGN KEY (deal_id) REFERENCES deals(deal_id)
         )
         """
@@ -121,6 +133,39 @@ def get_events(deal_id: str) -> list[Event]:
     return [_row_to_event(r) for r in rows]
 
 
+def save_dispute(dispute: Dispute):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO disputes (deal_id, party, claim, filed_at) VALUES (?, ?, ?, ?)",
+        (
+            dispute.deal_id,
+            dispute.party,
+            dispute.claim,
+            dispute.filed_at.isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_disputes(deal_id: str) -> list[Dispute]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM disputes WHERE deal_id = ? ORDER BY id ASC", (deal_id,)
+    ).fetchall()
+    conn.close()
+    return [
+        Dispute(
+            id=r["id"],
+            deal_id=r["deal_id"],
+            party=r["party"],
+            claim=r["claim"],
+            filed_at=datetime.fromisoformat(r["filed_at"]),
+        )
+        for r in rows
+    ]
+
+
 def _row_to_event(row) -> Event:
     return Event(
         id=row["id"],
@@ -132,5 +177,5 @@ def _row_to_event(row) -> Event:
         payload_hash=row["payload_hash"],
         previous_event_hash=row["previous_event_hash"],
         event_hash=row["event_hash"],
-        timestamp=datetime.fromisoformat(row["timestamp"]).replace(tzinfo=timezone.utc),
+        timestamp=datetime.fromisoformat(row["timestamp"]),
     )

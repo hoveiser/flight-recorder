@@ -81,11 +81,9 @@ def test_tamper_detection(client, deal):
         )
         assert resp.status_code == 200
 
-    # Get the SECOND event's actual ID (not hardcoded)
     events = client.get(f"/deals/{deal_id}/events").json()
     second_event_id = events[1]["id"]
 
-    # Tamper: mutate the second event's payload directly in the DB
     conn = db.get_conn()
     conn.execute(
         "UPDATE events SET payload = ? WHERE id = ?",
@@ -108,11 +106,9 @@ def test_delete_event_breaks_chain(client, deal):
         )
         assert resp.status_code == 200
 
-    # Get the SECOND event's actual ID (not hardcoded)
     events = client.get(f"/deals/{deal_id}/events").json()
     second_event_id = events[1]["id"]
 
-    # Delete the second event -> chain gap
     conn = db.get_conn()
     conn.execute(
         "DELETE FROM events WHERE id = ?",
@@ -124,3 +120,43 @@ def test_delete_event_breaks_chain(client, deal):
     resp = client.get(f"/deals/{deal_id}/verify")
     body = resp.json()
     assert body["verification"] == "FAIL"
+
+
+def test_dispute_requires_party(client, deal):
+    deal_id = deal["deal_id"]
+    resp = client.post(
+        f"/deals/{deal_id}/dispute",
+        json={"deal_id": deal_id, "party": "stranger", "claim": "I want money"},
+    )
+    assert resp.status_code == 403
+
+
+def test_dispute_and_case_file(client, deal):
+    deal_id = deal["deal_id"]
+
+    # Record some events
+    for i in range(2):
+        resp = client.post(
+            "/events",
+            json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST", "payload": {"i": i}},
+        )
+        assert resp.status_code == 200
+
+    # File a dispute
+    resp = client.post(
+        f"/deals/{deal_id}/dispute",
+        json={"deal_id": deal_id, "party": "agentA", "claim": "AgentB delivered only 500 rows"},
+    )
+    assert resp.status_code == 200
+
+    # Get case file
+    resp = client.get(f"/deals/{deal_id}/case-file")
+    assert resp.status_code == 200
+    case = resp.json()
+
+    assert case["deal_id"] == deal_id
+    assert len(case["events"]) == 2
+    assert len(case["disputes"]) == 1
+    assert case["disputes"][0]["party"] == "agentA"
+    assert case["chain_integrity"]["verification"] == "PASS"
+    assert case["definition_of_done"]["success"] == "1000 valid rows"

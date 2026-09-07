@@ -32,3 +32,16 @@ class Deal(DealCreate):
     """Stored deal"""
     agreement_hash: str
     created_at: datetime
+
+
+class DisputeCreate(BaseModel):
+    """Input: a party files a dispute with their claim"""
+    deal_id: str
+    party: str
+    claim: str
+
+
+class Dispute(DisputeCreate):
+    """Stored dispute"""
+    id: int
+    filed_at: datetime
