@@ -2,13 +2,19 @@ import os
 import sys
 import tempfile
 import uuid
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set temp DB BEFORE importing app
 os.environ["FLIGHT_RECORDER_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 
-import pytest
+# Import genlayer-test fixtures if available
+try:
+    pytest_plugins = ["genlayer_test.pytest_plugin"]
+except Exception:
+    pass
+
 from fastapi.testclient import TestClient
 from src.main import app
 from src import db
