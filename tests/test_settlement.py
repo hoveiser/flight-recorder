@@ -14,7 +14,7 @@ CASE_FILE_CONTENT = json.dumps({
 
 
 def test_open_deal_locks_funds(direct_vm, direct_deploy, direct_alice, direct_bob):
-    c = direct_deploy("contracts/settlement.py")
+    c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
     did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
@@ -27,7 +27,7 @@ def test_open_deal_locks_funds(direct_vm, direct_deploy, direct_alice, direct_bo
 
 
 def test_dispute_requires_party(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
-    c = direct_deploy("contracts/settlement.py")
+    c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
     did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
@@ -38,7 +38,7 @@ def test_dispute_requires_party(direct_vm, direct_deploy, direct_alice, direct_b
 
 
 def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
-    c = direct_deploy("contracts/settlement.py")
+    c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
     did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
@@ -56,7 +56,7 @@ def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_ali
 
 
 def test_finalize_pays_winner(direct_vm, direct_deploy, direct_alice, direct_bob):
-    c = direct_deploy("contracts/settlement.py")
+    c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
     did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
@@ -77,7 +77,7 @@ def test_finalize_pays_winner(direct_vm, direct_deploy, direct_alice, direct_bob
 
 
 def test_case_file_hash_mismatch_refund(direct_vm, direct_deploy, direct_alice, direct_bob):
-    c = direct_deploy("contracts/settlement.py")
+    c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
     did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
