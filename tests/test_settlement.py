@@ -3,7 +3,7 @@ import json
 
 VALUE = 2 * 10**18
 CASE_FILE_URL = "https://example.com/case-file.json"
-CASE_FILE_HASH = "a1b2c3d4e5f6" * 5 + "a1b2c3d4"  # 64 chars
+CASE_FILE_HASH = "a" * 64  # Exactly 64 chars (SHA-256 hex)
 CASE_FILE_CONTENT = json.dumps({
     "deal_id": "scraper_deal_001",
     "definition_of_done": {"success_criteria": "1000 valid records"},
@@ -38,8 +38,10 @@ def test_dispute_requires_party(direct_vm, direct_deploy, direct_alice, direct_b
     did = c.open_deal("deal1", "a" * 64, _hex(direct_bob), 120, VALUE)
     
     direct_vm.sender = direct_charlie
-    with direct_vm.expect_revert("Only parties"):
+    # Use pytest.raises instead of expect_revert for simpler assertion
+    with pytest.raises(Exception) as exc_info:
         c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    assert "Only parties" in str(exc_info.value)
 
 
 def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
