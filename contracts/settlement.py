@@ -2,18 +2,10 @@ from genlayer import *
 import json as _json
 import hashlib as _hashlib
 import datetime as _dt
-import urllib.request as _urlrequest
 
 MAX_URL_LEN = 2000
 MAX_TEXT_LEN = 8000
 MAX_FETCH_FAILURES = 3
-
-
-def _clean_text(b: bytes) -> str:
-    try:
-        return b.decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
 
 
 def _sanitize(s: str, max_len: int) -> str:
@@ -22,17 +14,15 @@ def _sanitize(s: str, max_len: int) -> str:
 
 
 def _fetch_case_file(url: str) -> str:
-    req = _urlrequest.Request(url, headers={"User-Agent": "FlightRecorder/1.0"})
+    """Fetch case file using gl.nondet.web (so mocks work in Direct Mode)"""
     try:
-        with _urlrequest.urlopen(req, timeout=10) as r:
-            status = r.status if hasattr(r, "status") else 200
-            if status >= 400:
-                return "FETCH_FAILED"
-            body = r.read()
-            text = _clean_text(body)
-            if len(text) < 20:
-                return "FETCH_FAILED"
-            return text
+        response = gl.nondet.web.get(url)
+        if response.status >= 400:
+            return "FETCH_FAILED"
+        text = response.body.decode("utf-8", errors="ignore") if isinstance(response.body, bytes) else str(response.body)
+        if len(text) < 20:
+            return "FETCH_FAILED"
+        return text
     except Exception:
         return "FETCH_FAILED"
 
