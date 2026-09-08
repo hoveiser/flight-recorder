@@ -7,20 +7,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
+          python-version: '3.12'
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Run off-chain tests
-        run: pytest tests/test_flight_recorder.py -v
-
-      - name: Run on-chain tests (if genlayer-test available)
-        run: pytest tests/test_settlement.py -v
-        continue-on-error: true
+      
+      - name: Run all tests
+        run: pytest tests/ -v
