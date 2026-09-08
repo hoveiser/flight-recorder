@@ -55,8 +55,10 @@ class Settlement(gl.Contract):
         gl.eth.send(Address(to_addr), amount)
 
     @gl.public.write.payable
-    def open_deal(self, deal_id: str, agreement_hash: str, worker: str, appeal_window_sec: int) -> int:
-        amount = int(gl.message.value)
+    def open_deal(self, deal_id: str, agreement_hash: str, worker: str, appeal_window_sec: int, amount: int = 0) -> int:
+        # Use amount parameter if provided, otherwise use gl.message.value
+        if amount == 0:
+            amount = int(gl.message.value)
         assert amount > 0, "Send the escrow amount with the transaction"
         assert len(deal_id) <= 100, "deal_id too long"
         assert len(agreement_hash) == 64, "agreement_hash must be SHA-256"

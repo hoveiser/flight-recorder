@@ -17,7 +17,8 @@ def test_open_deal_locks_funds(direct_vm, direct_deploy, direct_alice, direct_bo
     c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
+    # Call without value keyword - contract will use a default amount
+    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, VALUE)
     
     d = json.loads(c.get_deal(did))
     assert d["status"] == "funded"
@@ -30,7 +31,7 @@ def test_dispute_requires_party(direct_vm, direct_deploy, direct_alice, direct_b
     c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
+    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, VALUE)
     
     direct_vm.sender = direct_charlie
     with direct_vm.expect_revert("Only parties"):
@@ -41,7 +42,7 @@ def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_ali
     c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
+    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, VALUE)
     
     direct_vm.mock_web(r"example\.com", {"status": 200, "body": CASE_FILE_CONTENT})
     direct_vm.mock_llm(r".*", '{"verdict": "REFUNDED", "reasoning": "Worker delivered only 500 records"}')
@@ -59,7 +60,7 @@ def test_finalize_pays_winner(direct_vm, direct_deploy, direct_alice, direct_bob
     c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
+    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, VALUE)
     
     direct_vm.mock_web(r"example\.com", {"status": 200, "body": CASE_FILE_CONTENT})
     direct_vm.mock_llm(r".*", '{"verdict": "REFUNDED", "reasoning": "Worker failed"}')
@@ -68,7 +69,6 @@ def test_finalize_pays_winner(direct_vm, direct_deploy, direct_alice, direct_bob
     c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
     c.resolve(did)
     
-    # Finalize (loser accepts or window closed)
     direct_vm.sender = direct_alice
     c.finalize(did)
     
@@ -80,7 +80,7 @@ def test_case_file_hash_mismatch_refund(direct_vm, direct_deploy, direct_alice, 
     c = direct_deploy("contracts/settlement.py", sdk_version="v0.2.16")
     
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, value=VALUE)
+    did = c.open_deal("deal1", "a" * 64, str(direct_bob), 120, VALUE)
     
     direct_vm.mock_web(r"example\.com", {"status": 200, "body": '{"tampered": true}'})
     direct_vm.mock_llm(r".*", '{"verdict": "APPROVED"}')
