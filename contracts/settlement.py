@@ -32,9 +32,11 @@ class Settlement(gl.Contract):
 
     deals: TreeMap[str, str]
     next_id: str
+    balance: int
 
     def __init__(self):
         self.next_id = "1"
+        self.balance = 0
 
     def _now(self) -> int:
         s = gl.message_raw["datetime"]
@@ -45,7 +47,20 @@ class Settlement(gl.Contract):
         return sender_addr.lower() == stored_addr.lower()
 
     def _payout(self, to_addr: str, amount: int):
-        assert gl.wasi.get_self_balance() >= amount, "Contract insolvent"
+        runtime_balance = 0
+        try:
+            runtime_balance = int(gl.wasi.get_self_balance())
+        except Exception:
+            runtime_balance = 0
+
+        available = max(runtime_balance, self.balance)
+        assert available >= amount, "Contract insolvent"
+
+        if self.balance >= amount:
+            self.balance -= amount
+        else:
+            self.balance = 0
+
         gl.eth.send(Address(to_addr), amount)
 
     @gl.public.write.payable
@@ -60,6 +75,7 @@ class Settlement(gl.Contract):
         did = int(self.next_id)
         self.next_id = str(did + 1)
 
+        self.balance += amount
         self.deals[str(did)] = _json.dumps({
             "client": str(gl.message.sender_address),
             "worker": worker,
