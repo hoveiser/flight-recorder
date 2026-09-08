@@ -1,8 +1,4 @@
-import gl
-import genlayer
 from genlayer import *
-import genlayer.gl as gl
-import genlayer.gl._internal.gl_call as _glc
 import json as _json
 import hashlib as _hashlib
 import datetime as _dt
@@ -56,13 +52,10 @@ class Settlement(gl.Contract):
 
     def _payout(self, to_addr: str, amount: int):
         assert gl.wasi.get_self_balance() >= amount, "Contract insolvent"
-        _glc.gl_call_generic(
-            {'EthSend': {'address': Address(to_addr), 'calldata': b'', 'value': amount}},
-            lambda _x: None,
-        ).get()
+        gl.eth.send(Address(to_addr), amount)
 
     @gl.public.write.payable
-    def open_deal(self, deal_id: str, agreement_hash: str, worker: str, appeal_window_sec: int):
+    def open_deal(self, deal_id: str, agreement_hash: str, worker: str, appeal_window_sec: int) -> int:
         amount = int(gl.message.value)
         assert amount > 0, "Send the escrow amount with the transaction"
         assert len(deal_id) <= 100, "deal_id too long"
