@@ -50,13 +50,16 @@ class Settlement(gl.Contract):
         s = gl.message_raw["datetime"]
         return int(_dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
 
+    def _is_party(self, sender_addr: str, stored_addr: str) -> bool:
+        """Compare sender with stored address (case-insensitive hex comparison)"""
+        return sender_addr.lower() == stored_addr.lower()
+
     def _payout(self, to_addr: str, amount: int):
         assert gl.wasi.get_self_balance() >= amount, "Contract insolvent"
         gl.eth.send(Address(to_addr), amount)
 
     @gl.public.write.payable
     def open_deal(self, deal_id: str, agreement_hash: str, worker: str, appeal_window_sec: int, amount: int = 0) -> int:
-        # Use amount parameter if provided, otherwise use gl.message.value
         if amount == 0:
             amount = int(gl.message.value)
         assert amount > 0, "Send the escrow amount with the transaction"
@@ -87,7 +90,8 @@ class Settlement(gl.Contract):
     @gl.public.write
     def anchor_milestone(self, deal_id: int, milestone: str, chain_head: str):
         d = _json.loads(self.deals[str(deal_id)])
-        assert gl.message.sender_address in (Address(d["client"]), Address(d["worker"])), "Only parties"
+        sender = str(gl.message.sender_address)
+        assert self._is_party(sender, d["client"]) or self._is_party(sender, d["worker"]), "Only parties"
         assert milestone in ("delivery", "dispute", "close"), "Invalid milestone"
         assert len(chain_head) == 64, "chain_head must be SHA-256"
 
@@ -102,7 +106,8 @@ class Settlement(gl.Contract):
     @gl.public.write
     def dispute(self, deal_id: int, case_file_url: str, case_file_hash: str):
         d = _json.loads(self.deals[str(deal_id)])
-        assert gl.message.sender_address in (Address(d["client"]), Address(d["worker"])), "Only parties"
+        sender = str(gl.message.sender_address)
+        assert self._is_party(sender, d["client"]) or self._is_party(sender, d["worker"]), "Only parties"
         assert d["status"] in ("funded", "delivered"), "Not disputable"
         assert len(case_file_url) <= MAX_URL_LEN, "URL too long"
         assert len(case_file_hash) == 64, "case_file_hash must be SHA-256"
@@ -214,7 +219,8 @@ class Settlement(gl.Contract):
         assert self._now() < d["verdict_at"] + d["appeal_window_sec"], "Appeal window closed"
 
         loser = d["client"] if d["verdict"] == "REFUNDED" else d["worker"]
-        assert gl.message.sender_address == Address(loser), "Only loser may appeal"
+        sender = str(gl.message.sender_address)
+        assert self._is_party(sender, loser), "Only loser may appeal"
 
         d["appeals_used"] = 1
         d["status"] = "disputed"
@@ -227,7 +233,8 @@ class Settlement(gl.Contract):
         assert d["status"] == "adjudicated", "Not adjudicated"
         window_closed = self._now() > d["verdict_at"] + d["appeal_window_sec"]
         loser = d["client"] if d["verdict"] == "REFUNDED" else d["worker"]
-        loser_accepts = gl.message.sender_address == Address(loser)
+        sender = str(gl.message.sender_address)
+        loser_accepts = self._is_party(sender, loser)
 
         assert d["appeals_used"] == 1 or window_closed or loser_accepts, "Appeal window open"
 
