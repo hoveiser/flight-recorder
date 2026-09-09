@@ -154,12 +154,7 @@ class Settlement(gl.Contract):
         )
 
         try:
-            answer = gl.nondet.exec_prompt(prompt).strip()
-            i = answer.find("{")
-            j = answer.rfind("}")
-            if i == -1 or j == -1:
-                return {"verdict": "UNVERIFIABLE", "reasoning": "no JSON in AI response"}
-            obj = _json.loads(answer[i:j + 1])
+            obj = gl.nondet.exec_prompt(prompt, response_format="json")
             v = str(obj.get("verdict", "")).upper()
             r = str(obj.get("reasoning", ""))[:300]
             if v in ("APPROVED", "REFUNDED"):
@@ -211,7 +206,7 @@ class Settlement(gl.Contract):
         assert d["appeals_used"] == 0, "Appeal already used"
         assert self._now() < d["verdict_at"] + d["appeal_window_sec"], "Appeal window closed"
 
-        loser = d["client"] if d["verdict"] == "REFUNDED" else d["worker"]
+        loser = d["worker"] if d["verdict"] == "REFUNDED" else d["client"]
         sender = str(gl.message.sender_address)
         assert self._is_party(sender, loser), "Only loser may appeal"
 
@@ -225,7 +220,7 @@ class Settlement(gl.Contract):
         d = _json.loads(self.deals[str(deal_id)])
         assert d["status"] == "adjudicated", "Not adjudicated"
         window_closed = self._now() > d["verdict_at"] + d["appeal_window_sec"]
-        loser = d["client"] if d["verdict"] == "REFUNDED" else d["worker"]
+        loser = d["worker"] if d["verdict"] == "REFUNDED" else d["client"]
         sender = str(gl.message.sender_address)
         loser_accepts = self._is_party(sender, loser)
 
