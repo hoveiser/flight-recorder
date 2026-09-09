@@ -153,52 +153,20 @@ class Settlement(gl.Contract):
             'or {"verdict": "REFUNDED", "reasoning": "<one sentence>"}'
         )
 
-        leader_result = None
-
-        def leader_fn():
-            nonlocal leader_result
-            try:
-                answer = gl.nondet.exec_prompt(prompt).strip()
-                i = answer.find("{")
-                j = answer.rfind("}")
-                if i == -1 or j == -1:
-                    leader_result = {"verdict": "UNVERIFIABLE", "reasoning": "no JSON in AI response"}
-                    return leader_result
-                obj = _json.loads(answer[i:j + 1])
-                v = str(obj.get("verdict", "")).upper()
-                r = str(obj.get("reasoning", ""))[:300]
-                if v in ("APPROVED", "REFUNDED"):
-                    leader_result = {"verdict": v, "reasoning": r}
-                    return leader_result
-                leader_result = {
-                    "verdict": "UNVERIFIABLE",
-                    "reasoning": "verdict not APPROVED or REFUNDED",
-                }
-                return leader_result
-            except Exception:
-                leader_result = {"verdict": "UNVERIFIABLE", "reasoning": "JSON parse failed"}
-                return leader_result
-
-        def validator_fn(leader_result):
-            try:
-                if not isinstance(leader_result, gl.vm.Return):
-                    return False
-                validator_result = leader_fn()
-                return validator_result["verdict"] == leader_result.calldata["verdict"]
-            except Exception:
-                return False
-
         try:
-            result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+            answer = gl.nondet.exec_prompt(prompt).strip()
+            i = answer.find("{")
+            j = answer.rfind("}")
+            if i == -1 or j == -1:
+                return {"verdict": "UNVERIFIABLE", "reasoning": "no JSON in AI response"}
+            obj = _json.loads(answer[i:j + 1])
+            v = str(obj.get("verdict", "")).upper()
+            r = str(obj.get("reasoning", ""))[:300]
+            if v in ("APPROVED", "REFUNDED"):
+                return {"verdict": v, "reasoning": r}
+            return {"verdict": "UNVERIFIABLE", "reasoning": "verdict not APPROVED or REFUNDED"}
         except Exception:
-            result = None
-        if isinstance(result, dict) and "verdict" in result:
-            return result
-        if isinstance(result, gl.vm.Return):
-            return result.calldata
-        if isinstance(leader_result, dict) and "verdict" in leader_result:
-            return leader_result
-        return {"verdict": "UNVERIFIABLE", "reasoning": "Consensus returned no adjudication"}
+            return {"verdict": "UNVERIFIABLE", "reasoning": "JSON parse failed"}
 
     @gl.public.write
     def resolve(self, deal_id: int):
