@@ -37,7 +37,6 @@ class Settlement(gl.Contract):
         return int(_dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
 
     def _is_party(self, sender_addr: str, stored_addr: str) -> bool:
-        """Compare sender with stored address (case-insensitive hex comparison)"""
         return sender_addr.lower() == stored_addr.lower()
 
     def _payout(self, to_addr: str, amount: int):
@@ -122,7 +121,7 @@ class Settlement(gl.Contract):
         self.deals[str(deal_id)] = _json.dumps(d)
 
     def _ai_round(self, d):
-        """Run AI adjudication. In Direct Mode, exec_prompt returns the mock directly."""
+        """Run one consensus-backed AI adjudication round."""
         url = d.get("case_file_url", "")
         if not url:
             return {"verdict": "UNREACHABLE", "reasoning": "No case file URL"}
@@ -174,23 +173,17 @@ class Settlement(gl.Contract):
             try:
                 if not isinstance(leader_result, gl.vm.Return):
                     return False
-                mine = leader_fn()
-                return mine["verdict"] == leader_result.calldata["verdict"]
+                validator_result = leader_fn()
+                return validator_result["verdict"] == leader_result.calldata["verdict"]
             except Exception:
                 return False
 
-        # Try full nondet round (production with validator consensus)
-        try:
-            result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
-            if isinstance(result, dict) and "verdict" in result:
-                return result
-        except Exception:
-            pass
-
-        # Fallback: call leader_fn directly (Direct Mode tests)
-        # IMPORTANT: leader_fn calls exec_prompt, which hits the mock.
-        # We call it ONLY ONCE to avoid double-hitting the mock.
-        return leader_fn()
+        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+        if isinstance(result, dict) and "verdict" in result:
+            return result
+        if isinstance(result, gl.vm.Return):
+            return result.calldata
+        return {"verdict": "UNVERIFIABLE", "reasoning": "Consensus returned no adjudication"}
 
     @gl.public.write
     def resolve(self, deal_id: int):
