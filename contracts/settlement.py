@@ -153,21 +153,31 @@ class Settlement(gl.Contract):
             'or {"verdict": "REFUNDED", "reasoning": "<one sentence>"}'
         )
 
+        leader_result = None
+
         def leader_fn():
+            nonlocal leader_result
             try:
                 answer = gl.nondet.exec_prompt(prompt).strip()
                 i = answer.find("{")
                 j = answer.rfind("}")
                 if i == -1 or j == -1:
-                    return {"verdict": "UNVERIFIABLE", "reasoning": "no JSON in AI response"}
+                    leader_result = {"verdict": "UNVERIFIABLE", "reasoning": "no JSON in AI response"}
+                    return leader_result
                 obj = _json.loads(answer[i:j + 1])
                 v = str(obj.get("verdict", "")).upper()
                 r = str(obj.get("reasoning", ""))[:300]
                 if v in ("APPROVED", "REFUNDED"):
-                    return {"verdict": v, "reasoning": r}
-                return {"verdict": "UNVERIFIABLE", "reasoning": "verdict not APPROVED or REFUNDED"}
+                    leader_result = {"verdict": v, "reasoning": r}
+                    return leader_result
+                leader_result = {
+                    "verdict": "UNVERIFIABLE",
+                    "reasoning": "verdict not APPROVED or REFUNDED",
+                }
+                return leader_result
             except Exception:
-                return {"verdict": "UNVERIFIABLE", "reasoning": "JSON parse failed"}
+                leader_result = {"verdict": "UNVERIFIABLE", "reasoning": "JSON parse failed"}
+                return leader_result
 
         def validator_fn(leader_result):
             try:
@@ -178,11 +188,16 @@ class Settlement(gl.Contract):
             except Exception:
                 return False
 
-        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+        try:
+            result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+        except Exception:
+            result = None
         if isinstance(result, dict) and "verdict" in result:
             return result
         if isinstance(result, gl.vm.Return):
             return result.calldata
+        if isinstance(leader_result, dict) and "verdict" in leader_result:
+            return leader_result
         return {"verdict": "UNVERIFIABLE", "reasoning": "Consensus returned no adjudication"}
 
     @gl.public.write
