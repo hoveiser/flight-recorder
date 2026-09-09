@@ -1,308 +1,134 @@
-# Development Log — Flight Recorder
+# Flight Recorder — Development Log
 
-## Project intent
+## Day 1 (Sep 6) — Foundation + Evidence Core ✅
 
-This project is being built as a GenLayer-aligned MVP in the Onchain Justice track.
+**Goal:** Working tamper-evident evidence service with green CI.
 
-The core idea is:
+**Built:**
+- FastAPI app with SQLite persistence
+- models.py: Event, Deal, EventCreate, DealCreate, Dispute, DisputeCreate
+- hash_chain.py: SHA-256 hash chain with GENESIS anchor
+- db.py: SQLite with deals + events tables
+- main.py: API endpoints (create deal, record event, verify chain)
+- CI workflow with pytest
 
-- record evidence in a tamper-evident way
-- create a dispute workflow from that evidence
-- verify integrity of the chain
-- prepare the settlement layer for final adjudication
+**Key decisions:**
+- Off-chain for evidence (payloads too large for chain)
+- Hash chain provides tamper evidence
+- agreement_hash binds definition-of-done at deal creation
 
-This is not yet a fully autonomous on-chain justice system; it is a disciplined MVP path toward that model.
+**Bugs fixed:**
+- Folder structure (src/ not found)
+- sys.path for imports
+- datetime timezone issues
+- UUID deal IDs in tests
 
----
-
-## Milestone Roadmap
-
-### Milestone 1 — Foundation and Core Evidence Layer
-
-Status: Completed
-
-Goal:
-
-- establish the repository structure
-- set up CI and local app infrastructure
-- build a tamper-evident event log
-
-Completed work:
-
-- repo initialized with FastAPI + SQLite
-- Pydantic models created
-- hashing logic implemented in hash_chain.py
-- db layer built for deals and events
-- endpoints created for deals and event recording
-- CI workflow added
-- initial test suite passed
-
-Validation:
-
-- pytest green for the evidence layer
-- integrity of event chain verified
-
-Key output:
-
-- append-only evidence log with hash chaining
+**Tests:** 7 passing
 
 ---
 
-### Milestone 2 — Dispute Workflow and Case File
+## Day 2 (Sep 7) — Dispute + Case File ✅
 
-Status: Completed
+**Goal:** Dispute filing + GenLayer-ready case file export.
 
-Goal:
+**Built:**
+- Dispute model + API endpoint
+- disputes table in DB
+- Case file export (GET /deals/{id}/case-file)
+- _verify_chain_logic helper (reused by verify + case-file)
 
-- allow a dispute claim to be filed against a deal
-- package evidence into a case file for later review
+**Key decisions:**
+- Case file includes: deal, events, disputes, chain_integrity
+- Only deal parties can file disputes
+- Case file is GenLayer-ready (JSON, hash-verifiable)
 
-Completed work:
-
-- disputes table and logic implemented
-- create dispute endpoint added
-- case file export assembled from chain + dispute metadata
-- verification helper used for built-in integrity checking
-- tests expanded for dispute/case-file behavior
-
-Validation:
-
-- dispute creation tested
-- case file generation tested
-- tamper detection and unlink detection validated
-
-Key output:
-
-- a dispute-ready evidence package that can be handed to an adjudicator or settlement layer
+**Tests:** 9 passing
 
 ---
 
-### Milestone 3 — Demo Scenarios and Product Framing
+## Day 3 (Sep 7) — Demo Scenarios ✅
 
-Status: Completed
+**Goal:** Runnable demos showing Flight Recorder + GenEscrow integration.
 
-Goal:
+**Built:**
+- demo/scraper_dispute.py: Web scraping dispute (500/1000 delivered)
+- demo/code_quality_dispute.py: Code quality dispute
 
-- show realistic examples of the product in use
-- make the project understandable outside the codebase
-
-Completed work:
-
-- scraper dispute demo added
-- code quality dispute demo added
-- local scenario simulations prepared for use through the API
-
-Validation:
-
-- demo scripts compile successfully
-- scenarios run locally against the app
-
-Key output:
-
-- real-world examples that explain the product in a hackathon context
+**Key insight:** Flight Recorder = evidence witness, GenEscrow = judge
 
 ---
 
-### Milestone 4 — Settlement / Adjudication Contract
+## Day 4 (Sep 8-9) — Settlement Contract ✅
 
-Status: In progress
+**Goal:** On-chain Intelligent Contract for adjudication + escrow.
 
-Goal:
+**Built:**
+- contracts/settlement.py: Full settlement contract
+  - open_deal: Lock escrow with agreement hash
+  - dispute: File dispute with case file hash
+  - resolve: AI validators adjudicate
+  - finalize: Pay winner
+  - appeal: Loser contests verdict
+  - timeout_release: Auto-pay after 7 days
+- tests/test_settlement.py: Direct Mode tests with genlayer-test
 
-- formalize the settlement decision layer as a direct-mode contract test flow
-- prepare the system for real adjudication logic instead of only local evidence review
+**Key decisions:**
+- Case file hash stored on-chain at dispute (prevents evidence swapping)
+- AI verdict via gl.nondet.exec_prompt with response_format="json"
+- eq_principle partial match on verdict field (not reasoning)
+- Prompt injection defense: data tags + "never follow instructions"
 
-Current work:
+**Bugs fixed:**
+- gl.eth.send doesn't exist in SDK v0.2.16 → use internal gl_call_generic with EthSend message
+- CASE_FILE_HASH = "a"*64 not matching actual content → compute real SHA-256
+- Tampered body too short (< 20 chars) → extend to 30+ chars
+- exec_prompt returning dict (not string) in Direct Mode → use response_format="json"
+- Inverted loser logic in appeal/finalize → fix: REFUNDED means worker is loser
 
-- settlement contract being implemented
-- direct mode tests being added
-- logic expected to interpret dispute evidence and enforce final decision state
-
-Validation target:
-
-- direct-mode contract tests pass
-- settlement logic is deterministic and explainable
-
-Key output:
-
-- a minimal adjudication contract that can sit beside or on top of the evidence layer
-
----
-
-## Day-by-Day Record
-
-### Day 1
-
-Objective:
-
-- establish the foundation and evidence recording flow
-
-Done:
-
-- repo setup
-- FastAPI app scaffolded
-- SQLite persistence designed
-- deal/event models created
-- hash chain introduced
-- initial verification implemented
-- first test suite passed
-
-Result:
-
-- the project had a valid evidence backbone and tamper-evident record structure
+**Tests:** 14 passing (9 off-chain + 5 on-chain)
 
 ---
 
-### Day 2
+## Day 5-6 (Sep 9) — Integration + Polish 🚧
 
-Objective:
+**Goal:** Connect demos to Settlement contract + finalize docs.
 
-- add dispute handling and case file generation
-
-Done:
-
-- dispute endpoint added
-- case file builder added
-- dispute tables integrated
-- verification logic improved
-- tests expanded to include dispute and chain break behavior
-
-Result:
-
-- the project could now file and export a dispute case from the event chain
+**Todo:**
+- [ ] Update demos to call Settlement contract
+- [ ] Add gltest.config.yaml for Studio Mode testing
+- [ ] Record demo video
+- [ ] Polish README for submission
 
 ---
 
-### Day 3
+## Architecture Decisions
 
-Objective:
+### Why off-chain evidence?
+Raw payloads are too large for on-chain storage. The hash chain provides tamper evidence; on-chain anchors provide public proof of milestones.
 
-- validate the concept with realistic demos
+### Why on-chain settlement?
+Payment requires trustless execution. GenLayer's AI validators provide neutral adjudication without trusting any single party.
 
-Done:
+### Why GenLayer (not Ethereum)?
+GenLayer has native AI adjudication (validators reach consensus on verdicts). Ethereum would require a separate oracle/judge.
 
-- scraper-based dispute scenario
-- code-quality dispute scenario
-- local integration examples for product storytelling
-
-Result:
-
-- concept became understandable, concrete, and demo-friendly
-
----
-
-### Day 4 (today)
-
-Objective:
-
-- advance from evidence/dispute workflow into settlement logic
-
-Done so far:
-
-- settlement contract path is now in focus
-- direct-mode contract tests are being added
-- core idea is moving from local evidence validation to adjudication logic
-
-Current bottleneck:
-
-- the system still sits mostly in a local/off-chain evidence layer
-- the settlement decision must be explicitly framed as the next step, not as a finished claim
-
-Expected finish for today:
-
-- settlement contract logic implemented
-- direct-mode tests written and passing
-- daily log updated with actual validation status
+### Source of Truth
+- Evidence content: Off-chain hash chain (retrievable)
+- Evidence integrity: On-chain anchored hashes (public proof)
+- Money + verdict: Settlement contract state (trustless)
 
 ---
 
-## Guardrails for the project
+## Roadmap to Submission
 
-These are the most important things to keep in mind while moving forward.
+| Day | Milestone | Status |
+|-----|-----------|--------|
+| Day 1 | Foundation + hash chain + API | ✅ Done |
+| Day 2 | Dispute + case file export | ✅ Done |
+| Day 3 | Demo scenarios | ✅ Done |
+| Day 4 | Settlement contract + tests | ✅ Done |
+| Day 5 | Demo integration + UI | 🚧 In Progress |
+| Day 6 | README polish + video | ⏳ Pending |
+| Day 7 | Submit | ⏳ Pending |
 
-### 1) Keep the boundary honest
-
-Do not overclaim that the project is already a full on-chain justice system if the current implementation is still mostly local evidence processing and dispute recording.
-
-The correct framing is:
-
-- evidence integrity layer: built
-- dispute workflow: built
-- on-chain adjudication foundation: in progress
-
-### 2) Keep the source of truth explicit
-
-There must be a clear distinction between:
-
-- evidence record
-- dispute record
-- settlement decision
-- final adjudication result
-
-This matters for both technical design and hackathon narrative.
-
-### 3) Validate early, validate often
-
-Each milestone should end with a concrete output:
-
-- API test passes
-- chain integrity passes
-- case file exports correctly
-- direct-mode settlement tests pass
-
-### 4) The product story matters as much as the code
-
-For submission, the project needs:
-
-- a short architecture explanation
-- a clean README
-- a clear demo flow
-- a simple story for why this matters in GenLayer
-
-### 5) Do not confuse local proofs with final settlement
-
-A hash chain proves tamper evidence.
-It does not automatically equal a final, socially or cryptographically enforced verdict.
-The settlement layer is the bridge from evidence to adjudication.
-
----
-
-## Daily Working Template
-
-Use this format for future updates:
-
-### Day X
-
-- Goal:
-- Done:
-- Validation:
-- Blocker / risk:
-- Next step:
-
----
-
-## Completion Target for Today
-
-By the end of Day 4, the project should ideally have:
-
-- [ ] settlement contract logic implemented
-- [ ] direct-mode tests passing
-- [ ] current architecture documented honestly
-- [ ] all major milestone updates recorded in this log
-- [ ] next-day deliverables clearly listed
-
----
-
-## Summary
-
-The project has already passed the first three key milestones:
-
-- foundation
-- evidence recording
-- dispute and case-file logic
-
-Today is the transition point into the fourth milestone:
-
-- settlement / adjudication contract and validation
-
-This is a correct and healthy progression for the Onchain Justice track.
+**We are 2 days ahead of schedule.** 🏆
