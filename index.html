@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Flight Recorder: tamper-evident evidence and on-chain AI settlement for agent-to-agent deals.">
+  <title>Flight Recorder | Evidence for Agent Deals</title>
+  <style>
+    :root {
+      --navy-950: #07111f;
+      --navy-900: #0b1a2d;
+      --navy-800: #10243b;
+      --ink: #e7f0f2;
+      --muted: #8ca4ae;
+      --cyan: #57d8dc;
+      --lime: #c6f36b;
+      --line: rgba(132, 188, 198, .18);
+      --panel: rgba(16, 36, 59, .72);
+      --max: 1120px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 80% -10%, rgba(87, 216, 220, .15), transparent 32rem),
+        linear-gradient(135deg, var(--navy-950), #0a1728 55%, #091321);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.6;
+    }
+    a { color: inherit; }
+    .wrap { width: min(calc(100% - 40px), var(--max)); margin: 0 auto; }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 17, 31, .78);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    nav {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ink);
+      text-decoration: none;
+      font: 700 1rem/1 "Trebuchet MS", sans-serif;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--cyan);
+      transform: rotate(45deg);
+      box-shadow: 0 0 22px rgba(87, 216, 220, .2);
+    }
+    .mark span {
+      width: 13px;
+      height: 13px;
+      border: 3px solid var(--lime);
+      transform: rotate(-45deg);
+    }
+    nav ul { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; }
+    nav a { color: var(--muted); text-decoration: none; font: 600 .8rem/1 "Trebuchet MS", sans-serif; }
+    nav a:hover { color: var(--cyan); }
+
+    .hero { padding: 112px 0 92px; position: relative; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 72px; align-items: end; }
+    .eyebrow {
+      color: var(--lime);
+      font: 700 .75rem/1.2 "Trebuchet MS", sans-serif;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.05; font-weight: 500; }
+    h1 { max-width: 760px; margin-top: 20px; font-size: clamp(3.4rem, 8vw, 7.2rem); letter-spacing: -.055em; }
+    .hero-copy { max-width: 660px; margin: 30px 0 0; color: #b8cbd0; font-size: clamp(1.12rem, 2vw, 1.45rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 17px;
+      border: 1px solid var(--cyan);
+      color: var(--navy-950);
+      background: var(--cyan);
+      font: 700 .78rem/1 "Trebuchet MS", sans-serif;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .button.alt { color: var(--ink); background: transparent; border-color: var(--line); }
+    .button:hover { background: var(--lime); border-color: var(--lime); }
+    .telemetry {
+      padding: 24px;
+      border-left: 2px solid var(--lime);
+      background: linear-gradient(145deg, rgba(16, 36, 59, .92), rgba(9, 22, 38, .36));
+      box-shadow: 20px 20px 0 rgba(87, 216, 220, .05);
+    }
+    .telemetry-label { color: var(--muted); font: 700 .68rem/1 "Trebuchet MS", sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+    .telemetry strong { display: block; margin: 14px 0 4px; color: var(--cyan); font: 500 2.8rem/1 Georgia, serif; }
+    .telemetry p { margin: 0; color: var(--muted); font-size: .95rem; }
+    .signal { height: 58px; display: flex; align-items: center; gap: 5px; margin-top: 28px; }
+    .signal i { display: block; width: 5px; background: var(--cyan); opacity: .85; }
+    .signal i:nth-child(1), .signal i:nth-child(7) { height: 18px; }
+    .signal i:nth-child(2), .signal i:nth-child(6) { height: 32px; }
+    .signal i:nth-child(3), .signal i:nth-child(5) { height: 45px; background: var(--lime); }
+    .signal i:nth-child(4) { height: 58px; }
+
+    section { padding: 88px 0; border-top: 1px solid var(--line); }
+    .section-head { display: flex; justify-content: space-between; gap: 30px; align-items: baseline; margin-bottom: 38px; }
+    h2 { font-size: clamp(2.2rem, 5vw, 4.2rem); letter-spacing: -.045em; }
+    .section-number { color: var(--lime); font: 700 .75rem/1 "Trebuchet MS", sans-serif; letter-spacing: .15em; }
+    .lede { max-width: 600px; color: var(--muted); font-size: 1.15rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .card { min-height: 190px; padding: 25px; border: 1px solid var(--line); background: var(--panel); }
+    .card h3 { margin-bottom: 13px; color: var(--cyan); font-size: 1.55rem; }
+    .card p, .card li { color: var(--muted); }
+    .card p { margin: 0; }
+    .card ul { margin: 0; padding-left: 20px; }
+    .steps { counter-reset: step; }
+    .step { position: relative; padding: 0 0 0 54px; min-height: 100px; }
+    .step + .step { margin-top: 28px; }
+    .step::before { counter-increment: step; content: "0" counter(step); position: absolute; left: 0; top: 2px; color: var(--lime); font: 700 .8rem/1 "Trebuchet MS", sans-serif; }
+    .step h3 { font-size: 1.45rem; }
+    .step p { margin: 8px 0 0; color: var(--muted); }
+    code { padding: 2px 6px; color: var(--lime); background: rgba(0, 0, 0, .22); font: .88em/1.3 "Courier New", monospace; }
+    .contract { display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: center; padding: 30px; border: 1px solid var(--cyan); background: rgba(87, 216, 220, .06); }
+    .contract h3 { color: var(--lime); font-size: 1.8rem; }
+    .address { display: block; margin-top: 13px; color: var(--cyan); font: .85rem/1.5 "Courier New", monospace; overflow-wrap: anywhere; }
+    footer { padding: 30px 0 44px; color: var(--muted); font: .75rem/1.5 "Trebuchet MS", sans-serif; }
+    @media (max-width: 760px) {
+      .wrap { width: min(calc(100% - 28px), var(--max)); }
+      nav { min-height: 64px; }
+      nav ul { gap: 12px; }
+      nav a { font-size: .68rem; }
+      .hero { padding: 76px 0 66px; }
+      .hero-grid, .grid-3, .grid-2, .contract { grid-template-columns: 1fr; }
+      .hero-grid { gap: 44px; }
+      .section-head { display: block; }
+      .section-number { display: block; margin-bottom: 15px; }
+      section { padding: 64px 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="wrap" aria-label="Main navigation">
+      <a class="brand" href="#top"><span class="mark" aria-hidden="true"><span></span></span> Flight Recorder</a>
+      <ul>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#contract">Contract</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <div class="eyebrow">Evidence layer / settlement engine</div>
+          <h1>Flight<br>Recorder</h1>
+          <p class="hero-copy">Tamper-evident evidence layer + on-chain AI settlement for agent-to-agent deals.</p>
+          <div class="actions">
+            <a class="button" href="https://github.com/hoveiser/flight-recorder">View on GitHub</a>
+            <a class="button alt" href="README.md">Read the docs</a>
+          </div>
+        </div>
+        <aside class="telemetry" aria-label="Project status">
+          <div class="telemetry-label">Recorder status</div>
+          <strong>CONSENSUS / 0.6</strong>
+          <p>Evidence is hashed off-chain. Decisions are finalized on GenLayer.</p>
+          <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="problem">
+      <div class="wrap">
+        <div class="section-head"><span class="section-number">01 / PROBLEM</span><h2>When agents disagree,<br>evidence should speak.</h2></div>
+        <p class="lede">Agent-to-agent work produces a trail of requests, responses, deliveries, and validations. Without a neutral record, a dispute becomes a contest of stories.</p>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="wrap">
+        <div class="section-head"><span class="section-number">02 / ARCHITECTURE</span><h2>Two layers.<br>One accountable flow.</h2></div>
+        <div class="grid-2">
+          <article class="card"><h3>Off-chain / witness</h3><p>Flight Recorder keeps an append-only SQLite log. Every event joins a SHA-256 hash chain, then exports a verifiable case file for adjudication.</p></article>
+          <article class="card"><h3>On-chain / judge</h3><p>Settlement locks escrow, anchors milestones, and uses GenLayer validator consensus to inspect evidence and resolve the deal.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head"><span class="section-number">03 / FEATURES</span><h2>Built for the<br>moment of truth.</h2></div>
+        <div class="grid-3">
+          <article class="card"><h3>Hash-chained logs</h3><p>Detect tampering, missing events, and broken history before evidence reaches the chain.</p></article>
+          <article class="card"><h3>AI adjudication</h3><p>Let GenLayer validators weigh a case file through an equivalence-principle workflow.</p></article>
+          <article class="card"><h3>Escrow lifecycle</h3><p>Fund, dispute, resolve, appeal, and finalize with explicit on-chain state transitions.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="quick-start">
+      <div class="wrap">
+        <div class="section-head"><span class="section-number">04 / QUICK START</span><h2>From log to<br>verdict.</h2></div>
+        <div class="steps">
+          <div class="step"><h3>Install the service</h3><p>Set up Python dependencies with <code>pip install -r requirements.txt</code>.</p></div>
+          <div class="step"><h3>Run the recorder</h3><p>Start the API with <code>uvicorn src.main:app --reload</code> and capture the evidence trail.</p></div>
+          <div class="step"><h3>Test the settlement</h3><p>Run <code>pytest tests/direct/test_settlement.py -v</code> for the five direct-mode contract tests.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="contract">
+      <div class="wrap">
+        <div class="section-head"><span class="section-number">05 / CONTRACT INFO</span><h2>Public state.<br>Inspectable decisions.</h2></div>
+        <div class="contract">
+          <div><h3>Settlement on GenLayer Studio Dev</h3><span class="address">0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35</span></div>
+          <a class="button" href="https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35">Open explorer</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="wrap">Flight Recorder · Evidence you can replay, decisions you can verify.</div></footer>
+</body>
+</html>
