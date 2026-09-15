@@ -32,7 +32,7 @@ Network: GenLayer Studio Next (chain 61997)
 | 1 retry | `dispute` | FINALIZED | `0xcdddcc65df7719b9559226d81886965294a4a8e0721de3307278bb0f1db3d456` | [View](https://explorer-studio-dev.genlayer.com/tx/0xcdddcc65df7719b9559226d81886965294a4a8e0721de3307278bb0f1db3d456) |
 | 1 retry | `resolve` | FINALIZED | `0x32636e6b80f21734dff0f6d602db8a6085f582e4ae2dfa5e30dae6d990e0606f` | [View](https://explorer-studio-dev.genlayer.com/tx/0x32636e6b80f21734dff0f6d602db8a6085f582e4ae2dfa5e30dae6d990e0606f) |
 
-## Happy Retry Hash Evidence
+## Happy Path Retry Details
 
 | Source | SHA-256 | Bytes |
 | --- | --- | ---: |
