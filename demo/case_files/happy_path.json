@@ -1,0 +1,55 @@
+{
+  "deal_id": "demo_happy_002",
+  "definition_of_done": {
+    "success_criteria": "Deliver 1000 validated product records with no duplicate IDs and a complete summary report",
+    "acceptance": "Client verifies the delivered dataset and report"
+  },
+  "parties": {
+    "client": "0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E",
+    "worker": "0x1111111111111111111111111111111111111111"
+  },
+  "agreement_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "events": [
+    {
+      "id": 1,
+      "actor": "client",
+      "event_type": "REQUEST",
+      "payload": {
+        "request": "Collect and validate 1000 product records"
+      }
+    },
+    {
+      "id": 2,
+      "actor": "worker",
+      "event_type": "RESPONSE",
+      "payload": {
+        "accepted": true,
+        "estimated_records": 1000
+      }
+    },
+    {
+      "id": 3,
+      "actor": "worker",
+      "event_type": "DELIVERY",
+      "payload": {
+        "records_delivered": 1000,
+        "duplicate_ids": 0,
+        "summary_report": "complete"
+      }
+    },
+    {
+      "id": 4,
+      "actor": "client",
+      "event_type": "VALIDATION",
+      "payload": {
+        "success": true,
+        "records_accepted": 1000,
+        "validation_note": "All acceptance criteria fulfilled"
+      }
+    }
+  ],
+  "chain_integrity": {
+    "verification": "PASS",
+    "events": 4
+  }
+}
