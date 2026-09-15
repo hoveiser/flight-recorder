@@ -9,8 +9,9 @@ Network: GenLayer Studio Next (chain 61997)
 | --- | ---: | --- | --- | --- |
 | 0 / Original refunded lifecycle | 1 | `refunded` / `EVIDENCE_MISMATCH` | Client: 0.1 GEN | None |
 | 1 / Happy path run | 4 | `refunded` / `EVIDENCE_MISMATCH` | Client: 0.1 GEN | None; validator result was `MISMATCH` because fetched case-file hash differed |
+| 1 / Happy path retry | 7 | `refunded` / `EVIDENCE_MISMATCH` | Client: 0.1 GEN | Exact validator reasoning: `Case file hash mismatch` |
 | 2 / Off-chain anchor | 5 | `funded`; `delivery` milestone anchored and verified | None | None |
-| 3 / Timeout release | 6 | `funded`; timeout transaction finalized with rejected execution result | None | `Timeout not reached (7 days)` |
+| 3 / Timeout release | 6 | `funded`; early release correctly rejected | None | `Timeout not reached (7 days)`; 7-day escrow lock enforced |
 
 ## Transactions
 
@@ -27,6 +28,18 @@ Network: GenLayer Studio Next (chain 61997)
 | 2 | `anchor_milestone` | FINALIZED | `0xa01c838cd2746a809f8b0b362ec10a10a17b8b60743e6a7aaf2ab0c57887c711` | [View](https://explorer-studio-dev.genlayer.com/tx/0xa01c838cd2746a809f8b0b362ec10a10a17b8b60743e6a7aaf2ab0c57887c711) |
 | 3 | `open_deal` | FINALIZED | `0xf2e2912525a436095a8a4d6e2e2b918e0a4d1801f97ced5235ecb17883b93ef2` | [View](https://explorer-studio-dev.genlayer.com/tx/0xf2e2912525a436095a8a4d6e2e2b918e0a4d1801f97ced5235ecb17883b93ef2) |
 | 3 | `timeout_release` | FINALIZED; rejected | `0x2ed7b3619a97e64ec226a073f0103aae9948ff2ad166174c6149a1f6a59c64e7` | [View](https://explorer-studio-dev.genlayer.com/tx/0x2ed7b3619a97e64ec226a073f0103aae9948ff2ad166174c6149a1f6a59c64e7) |
+| 1 retry | `open_deal` | FINALIZED | `0x2ba050ebed9c4d6788237eeaa1320bb6b21b58de0afb94f1c57d5145fcd47f1a` | [View](https://explorer-studio-dev.genlayer.com/tx/0x2ba050ebed9c4d6788237eeaa1320bb6b21b58de0afb94f1c57d5145fcd47f1a) |
+| 1 retry | `dispute` | FINALIZED | `0xcdddcc65df7719b9559226d81886965294a4a8e0721de3307278bb0f1db3d456` | [View](https://explorer-studio-dev.genlayer.com/tx/0xcdddcc65df7719b9559226d81886965294a4a8e0721de3307278bb0f1db3d456) |
+| 1 retry | `resolve` | FINALIZED | `0x32636e6b80f21734dff0f6d602db8a6085f582e4ae2dfa5e30dae6d990e0606f` | [View](https://explorer-studio-dev.genlayer.com/tx/0x32636e6b80f21734dff0f6d602db8a6085f582e4ae2dfa5e30dae6d990e0606f) |
+
+## Happy Retry Hash Evidence
+
+| Source | SHA-256 | Bytes |
+| --- | --- | ---: |
+| Local `demo/case_files/happy_path.json` | `ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7` | 1363 |
+| Fetched raw URL response | `ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7` | 1363 |
+
+The hashes and byte counts matched exactly. Deal 7 nevertheless finalized as `refunded` / `EVIDENCE_MISMATCH`; validator reasoning was exactly `Case file hash mismatch`. No second retry was attempted.
 
 ## Balance
 
