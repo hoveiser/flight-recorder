@@ -73,6 +73,22 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
+## On-Chain Settlement (Studio Next)
+
+The Settlement contract is deployed on GenLayer Studio Dev (chain ID `61997`).
+
+- Contract address: `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35`
+- Explorer: https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35
+
+Run the end-to-end flow from the repository root:
+
+    npm install
+    node scripts/e2e_demo.js
+
+Run the direct Settlement tests:
+
+    pytest tests/direct/test_settlement.py -v
+
 ### 3. Run Demos
 
     python demo/scraper_dispute.py

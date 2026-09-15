@@ -1,0 +1,14 @@
+networks:
+  default: studio_devnet
+
+  localnet:
+    url: "http://127.0.0.1:4000/api"
+
+  studio_devnet: {}
+
+  studionet: {}
+
+paths:
+  contracts: "contracts"
+
+environment: .env

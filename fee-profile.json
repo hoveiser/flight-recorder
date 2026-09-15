@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "network": "studio-dev",
+  "source": "genlayer-js-estimateTransactionFeesForWrite-fallback",
+  "reason": "gltest --fee-profile is blocked by the repository's obsolete gltest.config.yaml chain_id key; resolve allocation was measured with the SDK Studio simulation estimator.",
+  "methods": {
+    "open_deal": {},
+    "dispute": {},
+    "resolve": {
+      "messageAllocations": [
+        {
+          "messageType": 0,
+          "onAcceptance": false,
+          "parentIndex": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "recipient": "0xe68c0b64bf1554801832d98eb3b1597f8905c95e",
+          "callKey": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "budget": "150000000000000",
+          "feeParams": "0x000000000000000000000000000000000000000000000000000000000007a1200000000000000000000000000000000000000000000000000000000011e1a300"
+        }
+      ]
+    },
+    "finalize": {}
+  }
+}
