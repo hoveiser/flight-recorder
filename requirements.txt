@@ -3,4 +3,4 @@ uvicorn
 pydantic
 pytest
 httpx
-genlayer-test==0.29.2
+genlayer-test==0.30.0rc2
