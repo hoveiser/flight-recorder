@@ -3,243 +3,106 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Flight Recorder: tamper-evident evidence and on-chain AI settlement for agent-to-agent deals.">
-  <title>Flight Recorder | Evidence for Agent Deals</title>
+  <meta name="description" content="Flight Recorder is a tamper-evident evidence layer with GenLayer on-chain AI settlement for agent-to-agent deals.">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Flight Recorder // Onchain Justice</title>
   <style>
     :root {
-      --navy-950: #07111f;
-      --navy-900: #0b1a2d;
-      --navy-800: #10243b;
-      --ink: #e7f0f2;
-      --muted: #8ca4ae;
-      --cyan: #57d8dc;
-      --lime: #c6f36b;
-      --line: rgba(132, 188, 198, .18);
-      --panel: rgba(16, 36, 59, .72);
-      --max: 1120px;
+      --bg: #050e14; --panel: #091821; --panel-2: #0d222c; --ink: #e5f1f0;
+      --body: #b8cbd0; --muted: #718990; --line: rgba(184, 203, 208, .16);
+      --cyan: #22d3ee; --lime: #a3e635; --amber: #fbbf24; --red: #fb4b4b;
+      --green: #4ade80; --mono: "JetBrains Mono", Consolas, monospace;
+      --sans: "Space Grotesk", system-ui, sans-serif; --max: 1180px;
     }
-
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-    body {
-      margin: 0;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 80% -10%, rgba(87, 216, 220, .15), transparent 32rem),
-        linear-gradient(135deg, var(--navy-950), #0a1728 55%, #091321);
-      font-family: Georgia, "Times New Roman", serif;
-      line-height: 1.6;
-    }
-    a { color: inherit; }
-    .wrap { width: min(calc(100% - 40px), var(--max)); margin: 0 auto; }
-
-    header {
-      border-bottom: 1px solid var(--line);
-      background: rgba(7, 17, 31, .78);
-      backdrop-filter: blur(14px);
-      position: sticky;
-      top: 0;
-      z-index: 5;
-    }
-    nav {
-      min-height: 76px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      color: var(--ink);
-      text-decoration: none;
-      font: 700 1rem/1 "Trebuchet MS", sans-serif;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-    .mark {
-      width: 34px;
-      height: 34px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--cyan);
-      transform: rotate(45deg);
-      box-shadow: 0 0 22px rgba(87, 216, 220, .2);
-    }
-    .mark span {
-      width: 13px;
-      height: 13px;
-      border: 3px solid var(--lime);
-      transform: rotate(-45deg);
-    }
-    nav ul { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; }
-    nav a { color: var(--muted); text-decoration: none; font: 600 .8rem/1 "Trebuchet MS", sans-serif; }
-    nav a:hover { color: var(--cyan); }
-
-    .hero { padding: 112px 0 92px; position: relative; overflow: hidden; }
-    .hero-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 72px; align-items: end; }
-    .eyebrow {
-      color: var(--lime);
-      font: 700 .75rem/1.2 "Trebuchet MS", sans-serif;
-      letter-spacing: .17em;
-      text-transform: uppercase;
-    }
-    h1, h2, h3 { margin: 0; line-height: 1.05; font-weight: 500; }
-    h1 { max-width: 760px; margin-top: 20px; font-size: clamp(3.4rem, 8vw, 7.2rem); letter-spacing: -.055em; }
-    .hero-copy { max-width: 660px; margin: 30px 0 0; color: #b8cbd0; font-size: clamp(1.12rem, 2vw, 1.45rem); }
-    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
-    .button {
-      display: inline-flex;
-      align-items: center;
-      min-height: 44px;
-      padding: 0 17px;
-      border: 1px solid var(--cyan);
-      color: var(--navy-950);
-      background: var(--cyan);
-      font: 700 .78rem/1 "Trebuchet MS", sans-serif;
-      text-decoration: none;
-      text-transform: uppercase;
-      letter-spacing: .06em;
-    }
-    .button.alt { color: var(--ink); background: transparent; border-color: var(--line); }
-    .button:hover { background: var(--lime); border-color: var(--lime); }
-    .telemetry {
-      padding: 24px;
-      border-left: 2px solid var(--lime);
-      background: linear-gradient(145deg, rgba(16, 36, 59, .92), rgba(9, 22, 38, .36));
-      box-shadow: 20px 20px 0 rgba(87, 216, 220, .05);
-    }
-    .telemetry-label { color: var(--muted); font: 700 .68rem/1 "Trebuchet MS", sans-serif; letter-spacing: .16em; text-transform: uppercase; }
-    .telemetry strong { display: block; margin: 14px 0 4px; color: var(--cyan); font: 500 2.8rem/1 Georgia, serif; }
-    .telemetry p { margin: 0; color: var(--muted); font-size: .95rem; }
-    .signal { height: 58px; display: flex; align-items: center; gap: 5px; margin-top: 28px; }
-    .signal i { display: block; width: 5px; background: var(--cyan); opacity: .85; }
-    .signal i:nth-child(1), .signal i:nth-child(7) { height: 18px; }
-    .signal i:nth-child(2), .signal i:nth-child(6) { height: 32px; }
-    .signal i:nth-child(3), .signal i:nth-child(5) { height: 45px; background: var(--lime); }
-    .signal i:nth-child(4) { height: 58px; }
-
-    section { padding: 88px 0; border-top: 1px solid var(--line); }
-    .section-head { display: flex; justify-content: space-between; gap: 30px; align-items: baseline; margin-bottom: 38px; }
-    h2 { font-size: clamp(2.2rem, 5vw, 4.2rem); letter-spacing: -.045em; }
-    .section-number { color: var(--lime); font: 700 .75rem/1 "Trebuchet MS", sans-serif; letter-spacing: .15em; }
-    .lede { max-width: 600px; color: var(--muted); font-size: 1.15rem; }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .card { min-height: 190px; padding: 25px; border: 1px solid var(--line); background: var(--panel); }
-    .card h3 { margin-bottom: 13px; color: var(--cyan); font-size: 1.55rem; }
-    .card p, .card li { color: var(--muted); }
-    .card p { margin: 0; }
-    .card ul { margin: 0; padding-left: 20px; }
-    .steps { counter-reset: step; }
-    .step { position: relative; padding: 0 0 0 54px; min-height: 100px; }
-    .step + .step { margin-top: 28px; }
-    .step::before { counter-increment: step; content: "0" counter(step); position: absolute; left: 0; top: 2px; color: var(--lime); font: 700 .8rem/1 "Trebuchet MS", sans-serif; }
-    .step h3 { font-size: 1.45rem; }
-    .step p { margin: 8px 0 0; color: var(--muted); }
-    code { padding: 2px 6px; color: var(--lime); background: rgba(0, 0, 0, .22); font: .88em/1.3 "Courier New", monospace; }
-    .contract { display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: center; padding: 30px; border: 1px solid var(--cyan); background: rgba(87, 216, 220, .06); }
-    .contract h3 { color: var(--lime); font-size: 1.8rem; }
-    .address { display: block; margin-top: 13px; color: var(--cyan); font: .85rem/1.5 "Courier New", monospace; overflow-wrap: anywhere; }
-    footer { padding: 30px 0 44px; color: var(--muted); font: .75rem/1.5 "Trebuchet MS", sans-serif; }
-    @media (max-width: 760px) {
-      .wrap { width: min(calc(100% - 28px), var(--max)); }
-      nav { min-height: 64px; }
-      nav ul { gap: 12px; }
-      nav a { font-size: .68rem; }
-      .hero { padding: 76px 0 66px; }
-      .hero-grid, .grid-3, .grid-2, .contract { grid-template-columns: 1fr; }
-      .hero-grid { gap: 44px; }
-      .section-head { display: block; }
-      .section-number { display: block; margin-bottom: 15px; }
-      section { padding: 64px 0; }
-    }
+    body { margin: 0; color: var(--ink); background: var(--bg); font: 15px/1.65 var(--sans); }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .13; background-image: linear-gradient(rgba(34,211,238,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,.22) 1px, transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(to bottom, black, transparent 75%); }
+    body::after { content: ""; position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .035; background: repeating-linear-gradient(0deg, transparent 0 3px, #fff 4px); }
+    a { color: inherit; } button { font: inherit; }
+    .wrap { width: min(calc(100% - 40px), var(--max)); margin: auto; }
+    .nav { position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--line); background: rgba(5,14,20,.9); backdrop-filter: blur(14px); }
+    .nav-inner { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 25px; }
+    .brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font: 600 .82rem var(--mono); letter-spacing: .12em; }
+    .brand img { width: 34px; height: 34px; object-fit: contain; }
+    .nav-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 18px; list-style: none; padding: 0; margin: 0; font: 500 .68rem var(--mono); color: var(--muted); text-transform: uppercase; }
+    .nav-links a { text-decoration: none; } .nav-links a:hover { color: var(--cyan); }
+    .hero { min-height: 680px; padding: 100px 0 90px; position: relative; background: radial-gradient(circle at 92% 8%, rgba(34,211,238,.15), transparent 32rem); }
+    .hero-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 70px; align-items: center; }
+    .eyebrow, .kicker { color: var(--lime); font: 600 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.05; } h1 { margin-top: 20px; font: 700 clamp(3.4rem, 9vw, 8rem)/.88 var(--sans); letter-spacing: -.08em; }
+    h2 { font-size: clamp(2rem, 5vw, 4.5rem); letter-spacing: -.065em; } h3 { font-size: 1.15rem; }
+    .tagline { max-width: 680px; margin: 28px 0 25px; color: var(--body); font-size: clamp(1.05rem, 2vw, 1.35rem); }
+    .hero-logo { display: block; max-width: 220px; width: 100%; margin: 0 0 28px; border: 1px solid var(--line); border-radius: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; } .btn { display: inline-flex; align-items: center; min-height: 42px; padding: 0 15px; border: 1px solid var(--cyan); color: var(--bg); background: var(--cyan); text-decoration: none; font: 600 .7rem var(--mono); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
+    .btn:hover { border-color: var(--lime); background: var(--lime); } .btn.ghost { color: var(--body); background: transparent; border-color: var(--line); }
+    .recorder { padding: 24px; border: 1px solid var(--line); background: linear-gradient(145deg, rgba(13,34,44,.94), rgba(5,14,20,.7)); box-shadow: 0 0 50px rgba(34,211,238,.08); }
+    .panel-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 600 .68rem var(--mono); letter-spacing: .1em; }
+    .rec { display: flex; align-items: center; gap: 7px; color: var(--red); } .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 14px var(--red); animation: blink 1.2s infinite; }
+    @keyframes blink { 50% { opacity: .25; } }
+    .ticker { min-height: 80px; display: grid; place-items: center; margin: 28px 0; border-block: 1px solid var(--line); color: var(--cyan); font: 600 .78rem var(--mono); letter-spacing: .08em; overflow: hidden; }
+    .stat { display: flex; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--line); font: .72rem var(--mono); } .stat:last-child { border: 0; } .stat span:first-child { color: var(--muted); } .stat span:last-child { color: var(--lime); }
+    section { padding: 105px 0; border-top: 1px solid var(--line); } .section-head { display: flex; justify-content: space-between; gap: 35px; align-items: end; margin-bottom: 43px; } .section-head p { max-width: 430px; margin: 0; color: var(--body); }
+    .number { color: var(--cyan); font: 600 .7rem var(--mono); letter-spacing: .12em; }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity .65s ease, transform .65s ease; } .reveal.visible { opacity: 1; transform: none; }
+    .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; gap: 14px; } .node { position: relative; min-height: 150px; padding: 18px; border: 1px solid var(--line); background: var(--panel); transition: .25s; } .node:hover, .card:hover { border-color: var(--cyan); box-shadow: 0 0 28px rgba(34,211,238,.11); transform: translateY(-3px); }
+    .node::after { content: "→"; position: absolute; right: -21px; top: 52px; color: var(--cyan); font: 1.3rem var(--mono); } .node:last-child::after { display: none; }
+    .node-dot { width: 9px; height: 9px; display: block; margin-bottom: 24px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px currentColor; } .node:nth-child(3) .node-dot { background: var(--amber); } .node:nth-child(4) .node-dot { background: var(--lime); } .node:nth-child(5) .node-dot { background: var(--green); }
+    .node h3 { font-size: 1rem; } .node p { margin: 8px 0 0; color: var(--muted); font-size: .8rem; }
+    .proof-bar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 16px 18px; margin-bottom: 20px; border: 1px solid var(--cyan); background: rgba(34,211,238,.06); } .address { overflow-wrap: anywhere; color: var(--cyan); font: .75rem var(--mono); }
+    .copy-btn { flex: 0 0 auto; padding: 8px 10px; border: 1px solid var(--line); color: var(--body); background: transparent; cursor: pointer; font: .65rem var(--mono); text-transform: uppercase; } .copy-btn:hover { color: var(--lime); border-color: var(--lime); }
+    table { width: 100%; border-collapse: collapse; text-align: left; } th, td { padding: 15px 12px; border-bottom: 1px solid var(--line); } th { color: var(--muted); font: 600 .65rem var(--mono); letter-spacing: .1em; } td { color: var(--body); font-size: .85rem; } td.hash { color: var(--cyan); font-family: var(--mono); font-size: .7rem; } td a { color: var(--lime); font: .7rem var(--mono); text-decoration: none; } .badge { padding: 4px 7px; color: var(--bg); background: var(--lime); font: 700 .62rem var(--mono); }
+    .note { margin-top: 17px; color: var(--muted); font: .72rem var(--mono); }
+    .two-panel { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; } .card { padding: 26px; border: 1px solid var(--line); background: var(--panel); transition: .25s; } .card > p { color: var(--body); }
+    .hash-chain { display: flex; align-items: center; gap: 7px; margin: 28px 0; } .hash-block { min-width: 94px; padding: 12px 8px; border: 1px solid var(--cyan); color: var(--cyan); font: .62rem var(--mono); text-align: center; } .hash-block.broken { border-color: var(--red); color: var(--red); } .hash-line { width: 18px; height: 1px; background: var(--cyan); }
+    .consensus { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 25px; min-height: 150px; margin: 28px 0; } .leader { padding: 18px; border: 1px solid var(--cyan); color: var(--cyan); text-align: center; font: .7rem var(--mono); } .validators { display: grid; gap: 12px; } .validator { color: var(--lime); font: .75rem var(--mono); } .validator::before { content: "✓"; display: inline-grid; place-items: center; width: 19px; height: 19px; margin-right: 8px; border: 1px solid var(--lime); border-radius: 50%; }
+    .caption { margin: 0; color: var(--muted); font-size: .82rem; }
+    .case-file { padding: 25px; overflow: auto; border: 1px solid var(--line); background: #07141d; font: .82rem/1.75 var(--mono); } .json-key { color: #7dd3fc; } .json-string { color: var(--lime); } .json-punc { color: var(--muted); } .json-value { color: #fbbf24; }
+    .badges { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; } .tag { padding: 7px 10px; border: 1px solid; font: .65rem var(--mono); } .tag.lime { color: var(--lime); border-color: var(--lime); } .tag.cyan { color: var(--cyan); border-color: var(--cyan); }
+    .seal { width: 58px; height: 58px; } .verdicts td:first-child { font: 700 .75rem var(--mono); } .v-lime { color: var(--lime); } .v-cyan { color: var(--cyan); } .v-red { color: var(--red); } .v-gray { color: var(--muted); } .v-amber { color: var(--amber); }
+    .terminal { padding: 25px; border: 1px solid var(--line); background: #061017; } .terminal-top { display: flex; gap: 7px; margin-bottom: 21px; } .terminal-top i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); } .terminal-top i:nth-child(2) { background: var(--amber); } .terminal-top i:nth-child(3) { background: var(--green); } .command { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--body); font: .75rem var(--mono); } .command code { color: var(--cyan); overflow-wrap: anywhere; }
+    .video { display: grid; min-height: 250px; place-items: center; border: 1px dashed var(--cyan); color: var(--muted); background: repeating-linear-gradient(135deg, rgba(34,211,238,.04) 0 2px, transparent 2px 10px); font: .85rem var(--mono); letter-spacing: .1em; }
+    footer { padding: 35px 0 50px; border-top: 1px solid var(--line); color: var(--muted); font: .7rem var(--mono); } .footer-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; } footer img { width: 28px; height: 28px; object-fit: contain; vertical-align: middle; margin-right: 10px; } footer a { margin-left: 15px; color: var(--body); text-decoration: none; } footer a:hover { color: var(--cyan); }
+    @media (max-width: 760px) { .wrap { width: min(calc(100% - 28px), var(--max)); } .nav-inner { align-items: flex-start; padding: 15px 0; flex-direction: column; } .nav-links { justify-content: flex-start; gap: 10px 13px; } .hero { padding: 70px 0; } .hero-grid, .two-panel { grid-template-columns: 1fr; gap: 42px; } section { padding: 70px 0; } .section-head { display: block; } .number { display: block; margin-bottom: 15px; } .pipeline { grid-template-columns: 1fr; } .node::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -25px; } .node:last-child::after { display: none; } .proof-bar, .footer-row { align-items: flex-start; flex-direction: column; } th, td { padding: 11px 6px; } th:nth-child(2), td:nth-child(2) { max-width: 125px; overflow: hidden; } .hash-chain { overflow-x: auto; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } .reveal { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
-  <header>
-    <nav class="wrap" aria-label="Main navigation">
-      <a class="brand" href="#top"><span class="mark" aria-hidden="true"><span></span></span> Flight Recorder</a>
-      <ul>
-        <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#features">Features</a></li>
-        <li><a href="#contract">Contract</a></li>
-      </ul>
-    </nav>
-  </header>
-
+  <nav class="nav"><div class="wrap nav-inner"><a class="brand" href="#top"><img src="assets/logo-transparent.png" alt=""> FLIGHT RECORDER</a><ul class="nav-links"><li><a href="#flow">Flow</a></li><li><a href="#proof">Proof</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#casefile">Case File</a></li><li><a href="#verdicts">Verdicts</a></li><li><a href="#quickstart">Quick Start</a></li><li><a href="#video">Video</a></li></ul></div></nav>
   <main id="top">
-    <section class="hero">
-      <div class="wrap hero-grid">
-        <div>
-          <div class="eyebrow">Evidence layer / settlement engine</div>
-          <h1>Flight<br>Recorder</h1>
-          <p class="hero-copy">Tamper-evident evidence layer + on-chain AI settlement for agent-to-agent deals.</p>
-          <div class="actions">
-            <a class="button" href="https://github.com/hoveiser/flight-recorder">View on GitHub</a>
-            <a class="button alt" href="README.md">Read the docs</a>
-          </div>
-        </div>
-        <aside class="telemetry" aria-label="Project status">
-          <div class="telemetry-label">Recorder status</div>
-          <strong>CONSENSUS / 0.6</strong>
-          <p>Evidence is hashed off-chain. Decisions are finalized on GenLayer.</p>
-          <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        </aside>
-      </div>
-    </section>
-
-    <section id="problem">
-      <div class="wrap">
-        <div class="section-head"><span class="section-number">01 / PROBLEM</span><h2>When agents disagree,<br>evidence should speak.</h2></div>
-        <p class="lede">Agent-to-agent work produces a trail of requests, responses, deliveries, and validations. Without a neutral record, a dispute becomes a contest of stories.</p>
-      </div>
-    </section>
-
-    <section id="architecture">
-      <div class="wrap">
-        <div class="section-head"><span class="section-number">02 / ARCHITECTURE</span><h2>Two layers.<br>One accountable flow.</h2></div>
-        <div class="grid-2">
-          <article class="card"><h3>Off-chain / witness</h3><p>Flight Recorder keeps an append-only SQLite log. Every event joins a SHA-256 hash chain, then exports a verifiable case file for adjudication.</p></article>
-          <article class="card"><h3>On-chain / judge</h3><p>Settlement locks escrow, anchors milestones, and uses GenLayer validator consensus to inspect evidence and resolve the deal.</p></article>
-        </div>
-      </div>
-    </section>
-
-    <section id="features">
-      <div class="wrap">
-        <div class="section-head"><span class="section-number">03 / FEATURES</span><h2>Built for the<br>moment of truth.</h2></div>
-        <div class="grid-3">
-          <article class="card"><h3>Hash-chained logs</h3><p>Detect tampering, missing events, and broken history before evidence reaches the chain.</p></article>
-          <article class="card"><h3>AI adjudication</h3><p>Let GenLayer validators weigh a case file through an equivalence-principle workflow.</p></article>
-          <article class="card"><h3>Escrow lifecycle</h3><p>Fund, dispute, resolve, appeal, and finalize with explicit on-chain state transitions.</p></article>
-        </div>
-      </div>
-    </section>
-
-    <section id="quick-start">
-      <div class="wrap">
-        <div class="section-head"><span class="section-number">04 / QUICK START</span><h2>From log to<br>verdict.</h2></div>
-        <div class="steps">
-          <div class="step"><h3>Install the service</h3><p>Set up Python dependencies with <code>pip install -r requirements.txt</code>.</p></div>
-          <div class="step"><h3>Run the recorder</h3><p>Start the API with <code>uvicorn src.main:app --reload</code> and capture the evidence trail.</p></div>
-          <div class="step"><h3>Test the settlement</h3><p>Run <code>pytest tests/direct/test_settlement.py -v</code> for the five direct-mode contract tests.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="contract">
-      <div class="wrap">
-        <div class="section-head"><span class="section-number">05 / CONTRACT INFO</span><h2>Public state.<br>Inspectable decisions.</h2></div>
-        <div class="contract">
-          <div><h3>Settlement on GenLayer Studio Dev</h3><span class="address">0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35</span></div>
-          <a class="button" href="https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35">Open explorer</a>
-        </div>
-      </div>
-    </section>
+    <section class="hero"><div class="wrap hero-grid"><div class="reveal"><div class="eyebrow">Agent Tank Hackathon / Onchain Justice</div><h1>FLIGHT<br>RECORDER</h1><p class="tagline">Tamper-evident evidence layer + on-chain AI settlement for agent-to-agent deals</p><img class="hero-logo" src="assets/logo.png" alt="Flight Recorder isometric mark"><div class="actions"><a class="btn" href="https://github.com/hoveiser/flight-recorder">View on GitHub</a><a class="btn ghost" href="https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35">Open Explorer</a><a class="btn ghost" href="#video">Watch demo</a></div></div><aside class="recorder reveal"><div class="panel-top"><span>RECORDER PANEL</span><span class="rec"><i class="rec-dot"></i> REC</span></div><div class="ticker" id="ticker">9f3a7c0d4e2b8a1f7c9e</div><div class="stat"><span>CHAIN</span><span>61997</span></div><div class="stat"><span>TESTS</span><span>14 PASSED</span></div><div class="stat"><span>TX FINALIZED</span><span>4</span></div><div class="stat"><span>SDK</span><span>v0.19-rc2</span></div></aside></div></section>
+    <section id="flow"><div class="wrap"><div class="section-head reveal"><span class="number">01 / FLOW</span><div><h2>From evidence<br>to outcome.</h2><p>Every transition is visible, deliberate, and anchored.</p></div></div><div class="pipeline reveal"><article class="node"><i class="node-dot"></i><h3>open_deal</h3><p>Escrow funded</p></article><article class="node"><i class="node-dot"></i><h3>record events</h3><p>Hash-chain witness</p></article><article class="node"><i class="node-dot"></i><h3>dispute</h3><p>Case file anchored</p></article><article class="node"><i class="node-dot"></i><h3>resolve</h3><p>AI validators decide</p></article><article class="node"><i class="node-dot"></i><h3>finalize</h3><p>Winner paid</p></article></div></div></section>
+    <section id="proof"><div class="wrap"><div class="section-head reveal"><span class="number">02 / LIVE PROOF</span><div><h2>Real state.<br>Real chain.</h2><p>Inspect the deployed Settlement contract and its lifecycle transactions.</p></div></div><div class="proof-bar reveal"><span class="address" id="address">0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35</span><button class="copy-btn" data-copy="address">Copy address</button></div><div class="reveal"><table><thead><tr><th>METHOD</th><th>TX HASH</th><th>STATUS</th><th>EXPLORER</th></tr></thead><tbody><tr><td>open_deal</td><td class="hash">0x3f524038...32ca56af</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x3f524038bade95409d05f1b611774fdaac120e685204a1a266b159c132ca56af">VIEW ↗</a></td></tr><tr><td>dispute</td><td class="hash">0xfdca5bce...ca41e8d5</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0xfdca5bce6f4826a1dc53c4fd4d10ba75361064900ee81bb19d806debca41e8d5">VIEW ↗</a></td></tr><tr><td>resolve</td><td class="hash">0x05b82cbb...031ff558</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x05b82cbb7ce17e4ce664dc5cac038eb4c8cac613c6ea344c49b429a5031ff558">VIEW ↗</a></td></tr><tr><td>finalize</td><td class="hash">0xc8a18748...142bfcf</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0xc8a18748628da2aebdc5046b4ef283cb17f7fe2e23ef4f3938b06701d142bfcf">VIEW ↗</a></td></tr></tbody></table><p class="note">Every row is a real transaction on GenLayer Studio Next (chain 61997).</p></div></div></section>
+    <section id="architecture"><div class="wrap"><div class="section-head reveal"><span class="number">03 / ARCHITECTURE</span><div><h2>Witness meets<br>judge.</h2><p>Evidence stays inspectable. Consensus stays distributed.</p></div></div><div class="two-panel"><article class="card reveal"><div class="kicker">Off-chain / witness</div><div class="hash-chain"><span class="hash-block">a91f...c20d</span><i class="hash-line"></i><span class="hash-block">7b3e...19aa</span><i class="hash-line"></i><span class="hash-block broken">BROKEN<br>c8ff...4401</span><i class="hash-line"></i><span class="hash-block">91d2...08be</span></div><p class="caption">Append-only SQLite log. Any modification breaks the chain.</p></article><article class="card reveal"><div class="kicker">On-chain / judge</div><div class="consensus"><div class="leader">LEADER<br><span style="color:var(--lime)">PROPOSES</span></div><div class="validators"><span class="validator">VALIDATOR 01 / AGREE</span><span class="validator">VALIDATOR 02 / AGREE</span><span class="validator">VALIDATOR 03 / AGREE</span></div></div><p class="caption">Equivalence-principle consensus. No single party controls the verdict.</p></article></div></div></section>
+    <section id="casefile"><div class="wrap"><div class="section-head reveal"><span class="number">04 / CASE FILE</span><div><h2>Evidence,<br>serialized.</h2><p>The case file carries the record from the witness layer to the judge.</p></div></div><pre class="case-file reveal"><span class="json-punc">{</span>
+  <span class="json-key">"deal_id"</span><span class="json-punc">: </span><span class="json-string">"scraper_deal_001"</span><span class="json-punc">,</span>
+  <span class="json-key">"definition_of_done"</span><span class="json-punc">: { </span><span class="json-key">"success_criteria"</span><span class="json-punc">: </span><span class="json-string">"1000 valid records"</span><span class="json-punc"> },</span>
+  <span class="json-key">"events"</span><span class="json-punc">: [{ </span><span class="json-key">"event_type"</span><span class="json-punc">: </span><span class="json-string">"DELIVERY"</span><span class="json-punc">, </span><span class="json-key">"payload"</span><span class="json-punc">: { </span><span class="json-key">"valid"</span><span class="json-punc">: </span><span class="json-value">500</span><span class="json-punc"> } }],</span>
+  <span class="json-key">"chain_integrity"</span><span class="json-punc">: { </span><span class="json-key">"verification"</span><span class="json-punc">: </span><span class="json-string">"PASS"</span><span class="json-punc"> }
+</span><span class="json-punc">}</span></pre><div class="badges reveal"><span class="tag lime">HASH CHAIN: PASS</span><span class="tag cyan">SHA-256 ANCHORED ON-CHAIN</span></div></div></section>
+    <section id="verdicts"><div class="wrap"><div class="section-head reveal"><span class="number">05 / VERDICTS</span><div style="display:flex;align-items:center;gap:24px"><h2>The record<br>gets a verdict.</h2><svg class="seal" viewBox="0 0 64 64" aria-label="Verdict seal"><circle cx="32" cy="32" r="27" fill="none" stroke="#22d3ee"/><circle cx="32" cy="32" r="21" fill="none" stroke="#718990" stroke-dasharray="2 4"/><path d="m21 32 7 7 16-17" fill="none" stroke="#a3e635" stroke-width="4"/><circle cx="49" cy="14" r="5" fill="#fb4b4b"/></svg></div></div><table class="verdicts reveal"><tbody><tr><td class="v-lime">APPROVED</td><td>Worker paid</td><td>Agreement fulfilled</td></tr><tr><td class="v-cyan">REFUNDED</td><td>Client refunded</td><td>Worker failed delivery</td></tr><tr><td class="v-red">EVIDENCE_MISMATCH</td><td>Client refunded</td><td>Tampered case file</td></tr><tr><td class="v-gray">UNRESOLVABLE</td><td>No payout</td><td>Too many failed attempts</td></tr><tr><td class="v-amber">TIMEOUT</td><td>Worker paid</td><td>No dispute filed</td></tr></tbody></table></div></section>
+    <section id="quickstart"><div class="wrap"><div class="section-head reveal"><span class="number">06 / QUICK START</span><div><h2>Run the<br>recorder.</h2><p>Five commands from clone to on-chain verification.</p></div></div><div class="terminal reveal"><div class="terminal-top"><i></i><i></i><i></i></div><div class="command"><code>git clone https://github.com/hoveiser/flight-recorder.git &amp;&amp; cd flight-recorder</code><button class="copy-btn" data-command="git clone https://github.com/hoveiser/flight-recorder.git &amp;&amp; cd flight-recorder">Copy</button></div><div class="command"><code>pip install -r requirements.txt &amp;&amp; npm install</code><button class="copy-btn" data-command="pip install -r requirements.txt &amp;&amp; npm install">Copy</button></div><div class="command"><code>pytest tests/ -v</code><button class="copy-btn" data-command="pytest tests/ -v">Copy</button></div><div class="command"><code>uvicorn src.main:app</code><button class="copy-btn" data-command="uvicorn src.main:app">Copy</button></div><div class="command"><code>node scripts/e2e_demo.js</code><button class="copy-btn" data-command="node scripts/e2e_demo.js">Copy</button></div></div><p class="note">Verify on-chain: <a href="https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35">open the Studio Explorer contract page ↗</a></p></div></section>
+    <section id="video"><div class="wrap"><div class="section-head reveal"><span class="number">07 / VIDEO</span><h2>See the flow<br>in motion.</h2></div><div class="video reveal">DEMO VIDEO — COMING SOON<!-- REPLACE_WITH_YOUTUBE_EMBED --></div></div></section>
   </main>
-
-  <footer><div class="wrap">Flight Recorder · Evidence you can replay, decisions you can verify.</div></footer>
+  <footer><div class="wrap footer-row"><div><img src="assets/logo-transparent.png" alt=""> FLIGHT RECORDER</div><div><a href="https://github.com/hoveiser/flight-recorder">GitHub</a><a href="https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35">Explorer</a><a href="README.md">README</a></div><div>Built for Agent Tank Hackathon — Onchain Justice track. MIT License.</div></div></footer>
+  <script>
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reveal = document.querySelectorAll('.reveal');
+    if (reduced) reveal.forEach((el) => el.classList.add('visible'));
+    else new IntersectionObserver((entries, observer) => entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.classList.add('visible'); observer.unobserve(entry.target); } }), { threshold: .12 }).observe(reveal[0]);
+    if (!reduced) { const observer = new IntersectionObserver((entries, observer) => entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.classList.add('visible'); observer.unobserve(entry.target); } }), { threshold: .12 }); reveal.forEach((el) => observer.observe(el)); }
+    const ticker = document.getElementById('ticker');
+    const chars = '0123456789abcdef';
+    function tick() { let value = ''; for (let i = 0; i < 24; i++) value += chars[Math.floor(Math.random() * chars.length)]; ticker.textContent = value; }
+    if (!reduced) setInterval(tick, 650);
+    async function copyText(value, button) { try { await navigator.clipboard.writeText(value); const old = button.textContent; button.textContent = 'Copied!'; setTimeout(() => button.textContent = old, 1200); } catch (_) { button.textContent = 'Copy failed'; } }
+    document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', () => copyText(document.getElementById(button.dataset.copy).textContent, button)));
+    document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => copyText(button.dataset.command, button)));
+  </script>
 </body>
 </html>
