@@ -197,7 +197,7 @@ Each event is linked to the previous one:
 | Component | Technology |
 |-----------|-----------|
 | Off-chain API | FastAPI + SQLite |
-| On-chain contract | GenLayer SDK v0.2.16 |
+| On-chain contract | GenLayer SDK v0.19.0rc2 (consensus v0.6) |
 | Testing | pytest + genlayer-test (Direct Mode) |
 | CI | GitHub Actions |
 
