@@ -1,11 +1,14 @@
 import { spawn } from 'child_process';
+import { readFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { createClient, createAccount } from 'genlayer-js';
 import { studioDevnet } from 'genlayer-js/chains';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const CONTRACT_ADDRESS = '0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35';
+const CONTRACT_ADDRESS = readFileSync('CONTRACT_ADDRESS.txt', 'utf-8').trim();
 const WORKER = '0x1111111111111111111111111111111111111111';
 const HAPPY_URL = 'https://raw.githubusercontent.com/hoveiser/flight-recorder/main/demo/case_files/happy_path.json';
 const HAPPY_HASH = 'ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7';
@@ -62,13 +65,18 @@ async function runHappy() {
 
 async function apiJson(url, options) { const response = await fetch(url, options); const body = await response.json(); if (!response.ok) throw new Error(`${response.status} ${JSON.stringify(body)}`); return body; }
 async function runAnchor() {
-  const server = spawn('python3', ['-m', 'uvicorn', 'src.main:app', '--port', '8000'], { stdio: 'ignore' });
+  // Isolated DB so repeated runs never collide with a previous off-chain deal.
+  const dbPath = join(tmpdir(), `flight_recorder_anchor_${Date.now()}.db`);
+  const server = spawn('python3', ['-m', 'uvicorn', 'src.main:app', '--port', '8000'], {
+    stdio: 'ignore',
+    env: { ...process.env, FLIGHT_RECORDER_DB: dbPath },
+  });
   const serverError = new Promise((_, reject) => server.once('error', reject));
   try {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try { await fetch('http://localhost:8000/docs'); break; } catch (_) { await Promise.race([wait(500), serverError]); }
     }
-    const id = 'anchor_demo_001';
+    const id = `anchor_demo_${Date.now()}`;
     await apiJson('http://localhost:8000/deals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deal_id: id, definition_of_done: { success_criteria: 'test' }, agreement_hash: '0'.repeat(64), parties: [account.address, WORKER] }) });
     for (const eventType of ['REQUEST', 'DELIVERY', 'VALIDATION']) await apiJson('http://localhost:8000/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deal_id: id, actor: account.address, event_type: eventType, payload: { scenario: 'anchor' } }) });
     const verification = await apiJson(`http://localhost:8000/deals/${id}/verify`);
@@ -76,7 +84,7 @@ async function runAnchor() {
     const anchor = await write('anchor_milestone', [onchain.id, 'delivery', verification.last_hash], 0n, 'anchor.anchor_milestone');
     const deal = await readDeal(onchain.id);
     return { id: onchain.id, offchain_deal_id: id, chain_head: verification.last_hash, txs: { open_deal: onchain.open.txHash, anchor_milestone: anchor.txHash }, deal, payouts: await readPayouts() };
-  } finally { server.kill('SIGTERM'); }
+  } finally { server.kill('SIGTERM'); try { unlinkSync(dbPath); } catch (_) { /* best effort */ } }
 }
 
 async function runTimeout() {

@@ -75,10 +75,10 @@ API docs: http://localhost:8000/docs
 
 ## On-Chain Settlement (Studio Next)
 
-The Settlement contract is deployed on GenLayer Studio Dev (chain ID `61997`).
+The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
 
-- Contract address: `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35`
-- Explorer: https://explorer-studio-dev.genlayer.com/address/0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35
+- Contract address: `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D`
+- Explorer: https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D
 
 Run the end-to-end flow from the repository root:
 
@@ -186,7 +186,7 @@ Each event is linked to the previous one:
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
     │   ├── test_flight_recorder.py  # Off-chain tests (9 tests)
-    │   └── test_settlement.py    # On-chain tests (5 tests)
+    │   └── direct/test_settlement.py # On-chain tests (8 tests)
     ├── demo/
     │   ├── scraper_dispute.py
     │   └── code_quality_dispute.py
@@ -203,4 +203,4 @@ Each event is linked to the previous one:
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 hoveiser

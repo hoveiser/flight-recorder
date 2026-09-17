@@ -114,17 +114,27 @@ class Settlement(gl.contract.Contract):
             url = d.get("case_file_url", "")
             if not url:
                 return {"verdict": "UNREACHABLE", "reasoning": "No case file URL"}
+            # Hash the raw response body. gl.nondet.web.render(mode="text")
+            # normalizes and reformats content, so its bytes never match the
+            # SHA-256 of the original file. The evidence hash must be computed
+            # over the exact bytes that were committed off-chain.
             try:
-                text = gl.nondet.web.render(url, mode="text")
+                response = gl.nondet.web.get(url)
+                raw = response.body
+                if isinstance(raw, str):
+                    raw = raw.encode("utf-8")
+                status = getattr(response, "status", 200)
             except Exception:
                 return {"verdict": "UNREACHABLE", "reasoning": "Cannot fetch case file"}
-            if not text or len(text) < 20:
+            if status != 200:
+                return {"verdict": "UNREACHABLE", "reasoning": f"Case file HTTP {status}"}
+            if not raw or len(raw) < 20:
                 return {"verdict": "UNREACHABLE", "reasoning": "Case file too short"}
-            fetched_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            fetched_hash = hashlib.sha256(raw).hexdigest()
             if fetched_hash != d["case_file_hash"]:
                 return {"verdict": "MISMATCH", "reasoning": "Case file hash mismatch"}
             try:
-                case = json.loads(text)
+                case = json.loads(raw.decode("utf-8"))
             except Exception:
                 return {"verdict": "UNSTRUCTURED", "reasoning": "Invalid case file JSON"}
 
