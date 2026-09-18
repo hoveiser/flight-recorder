@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { readFileSync, unlinkSync } from 'fs';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createClient, createAccount } from 'genlayer-js';
@@ -12,6 +13,27 @@ const CONTRACT_ADDRESS = readFileSync('CONTRACT_ADDRESS.txt', 'utf-8').trim();
 const WORKER = '0x1111111111111111111111111111111111111111';
 const HAPPY_URL = 'https://raw.githubusercontent.com/hoveiser/flight-recorder/main/demo/case_files/happy_path.json';
 const HAPPY_HASH = 'ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7';
+
+/** Mirrors src/hash_chain.canonical_json: sorted keys, no whitespace. */
+function canonicalJson(obj) {
+  if (Array.isArray(obj)) return `[${obj.map(canonicalJson).join(',')}]`;
+  if (obj && typeof obj === 'object') {
+    const body = Object.keys(obj)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(obj[key])}`)
+      .join(',');
+    return `{${body}}`;
+  }
+  return JSON.stringify(obj);
+}
+
+// open_deal commits SHA-256(canonical_json(definition_of_done)) and the contract
+// recomputes that digest over the case file's own definition_of_done, refusing
+// to adjudicate if the two disagree. The happy path therefore has to be opened
+// with the hash of the very terms it later submits, not a placeholder.
+const HAPPY_AGREEMENT_HASH = createHash('sha256')
+  .update(canonicalJson(JSON.parse(readFileSync('demo/case_files/happy_path.json', 'utf-8')).definition_of_done))
+  .digest('hex');
 const EXPLORER = 'https://explorer-studio-dev.genlayer.com';
 const account = createAccount(process.env.ACCOUNT_PRIVATE_KEY_1);
 const client = createClient({ chain: studioDevnet, account });
@@ -48,13 +70,13 @@ async function findDealId(externalId) {
 function explorer(hash) { return `${EXPLORER}/tx/${hash}`; }
 function txsOf(result) { return Object.fromEntries(Object.entries(result.txs).filter(([, hash]) => hash).map(([key, hash]) => [key, explorer(hash)])); }
 
-async function createOnchainDeal(externalId, windowSec = 300) {
-  const open = await write('open_deal', [externalId, '0'.repeat(64), WORKER, windowSec], 100000000000000000n, `${externalId}.open_deal`);
+async function createOnchainDeal(externalId, windowSec = 300, agreementHash = '0'.repeat(64)) {
+  const open = await write('open_deal', [externalId, agreementHash, WORKER, windowSec], 100000000000000000n, `${externalId}.open_deal`);
   return { id: await findDealId(externalId), open };
 }
 
 async function runHappy() {
-  const { id, open } = await createOnchainDeal(`demo_happy_${Date.now()}`);
+  const { id, open } = await createOnchainDeal(`demo_happy_${Date.now()}`, 300, HAPPY_AGREEMENT_HASH);
   const dispute = await write('dispute', [id, HAPPY_URL, HAPPY_HASH], 0n, 'happy.dispute');
   const resolve = await write('resolve', [id], 0n, 'happy.resolve');
   let deal = await readDeal(id);
