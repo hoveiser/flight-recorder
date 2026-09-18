@@ -252,6 +252,8 @@ Known gaps, stated plainly rather than discovered later:
   v3, so the hardening (agreement/anchor verification, fail-closed timeout, exception
   retry) is proven by the direct-mode suite but not yet by on-chain execution.
   Deliberately deferred to post-hackathon so the live evidence stays continuous.
+- **Browser-executed dispute flow.** Wallet connect, Studio Next chain switch,
+  integrated faucet, and in-browser open_deal/dispute/resolve/finalize.
 
 ## Tech Stack
 
