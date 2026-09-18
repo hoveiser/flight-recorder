@@ -24,7 +24,8 @@ def init_db():
             definition_of_done TEXT NOT NULL,
             parties TEXT NOT NULL,
             agreement_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            sealed INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -57,20 +58,38 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_events_deal ON events(deal_id, id)"
+    )
     conn.commit()
     conn.close()
 
 
+def _ensure_sealed_column(conn):
+    """Add the sealed column to databases created before the evidence seal.
+
+    CREATE TABLE IF NOT EXISTS leaves an existing deals table untouched, so a
+    database written by an earlier version would never gain the column. Adding
+    it on demand keeps old databases working instead of failing at read time.
+    """
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(deals)")}
+    if "sealed" not in columns:
+        conn.execute("ALTER TABLE deals ADD COLUMN sealed INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
+
 def save_deal(deal: Deal):
     conn = get_conn()
+    _ensure_sealed_column(conn)
     conn.execute(
-        "INSERT INTO deals (deal_id, definition_of_done, parties, agreement_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO deals (deal_id, definition_of_done, parties, agreement_hash, created_at, sealed) VALUES (?, ?, ?, ?, ?, ?)",
         (
             deal.deal_id,
             json.dumps(deal.definition_of_done),
             json.dumps(deal.parties),
             deal.agreement_hash,
             deal.created_at.isoformat(),
+            1 if deal.sealed else 0,
         ),
     )
     conn.commit()
@@ -79,17 +98,30 @@ def save_deal(deal: Deal):
 
 def get_deal(deal_id: str) -> Optional[Deal]:
     conn = get_conn()
+    _ensure_sealed_column(conn)
     row = conn.execute("SELECT * FROM deals WHERE deal_id = ?", (deal_id,)).fetchone()
     conn.close()
     if row is None:
         return None
+    keys = row.keys()
     return Deal(
         deal_id=row["deal_id"],
         definition_of_done=json.loads(row["definition_of_done"]),
         parties=json.loads(row["parties"]),
         agreement_hash=row["agreement_hash"],
         created_at=datetime.fromisoformat(row["created_at"]),
+        sealed=bool(row["sealed"]) if "sealed" in keys else False,
     )
+
+
+def seal_deal(deal_id: str) -> bool:
+    """Freeze the evidence log. Idempotent: returns True once the deal is sealed."""
+    conn = get_conn()
+    _ensure_sealed_column(conn)
+    conn.execute("UPDATE deals SET sealed = 1 WHERE deal_id = ?", (deal_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def save_event(event: Event):

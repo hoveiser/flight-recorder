@@ -43,6 +43,12 @@ def record_event(event_in: EventCreate):
     deal = db.get_deal(event_in.deal_id)
     if deal is None:
         raise HTTPException(404, "Deal not found")
+    if deal.sealed:
+        # The case file that was anchored on-chain must stay byte-identical to
+        # the one validators fetch, so the log freezes at dispute time. Without
+        # this, a party could append favourable events after anchoring and make
+        # the on-chain hash describe a record that no longer exists off-chain.
+        raise HTTPException(409, "Evidence log sealed after dispute")
 
     last = db.get_last_event(event_in.deal_id)
     previous_hash = last.event_hash if last else GENESIS
@@ -79,6 +85,29 @@ def get_events(deal_id: str):
     if db.get_deal(deal_id) is None:
         raise HTTPException(404, "Deal not found")
     return db.get_events(deal_id)
+
+
+@app.post("/deals/{deal_id}/seal")
+def seal_deal(deal_id: str):
+    """Freeze the evidence log and return the head hash that must be anchored.
+
+    Idempotent: sealing an already-sealed deal succeeds and returns the same
+    head hash. Call this immediately before sending the on-chain dispute so the
+    anchored hash describes a log that can no longer change.
+    """
+    deal = db.get_deal(deal_id)
+    if deal is None:
+        raise HTTPException(404, "Deal not found")
+
+    db.seal_deal(deal_id)
+    last = db.get_last_event(deal_id)
+    last_hash = last.event_hash if last else GENESIS
+    return {
+        "deal_id": deal_id,
+        "sealed": True,
+        "chain_head": last_hash,
+        "events": len(db.get_events(deal_id)),
+    }
 
 
 @app.post("/deals/{deal_id}/dispute", response_model=Dispute)

@@ -13,6 +13,8 @@ const CONTRACT_ADDRESS = readFileSync('CONTRACT_ADDRESS.txt', 'utf-8').trim();
 const WORKER = '0x1111111111111111111111111111111111111111';
 const HAPPY_URL = 'https://raw.githubusercontent.com/hoveiser/flight-recorder/main/demo/case_files/happy_path.json';
 const HAPPY_HASH = 'ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7';
+// Off-chain deal the happy-path case file comes from. Sealed before its dispute.
+const HAPPY_OFFCHAIN_DEAL_ID = 'scraper_deal_001';
 
 /** Mirrors src/hash_chain.canonical_json: sorted keys, no whitespace. */
 function canonicalJson(obj) {
@@ -77,6 +79,11 @@ async function createOnchainDeal(externalId, windowSec = 300, agreementHash = '0
 
 async function runHappy() {
   const { id, open } = await createOnchainDeal(`demo_happy_${Date.now()}`, 300, HAPPY_AGREEMENT_HASH);
+  // Seal immediately before the dispute so the evidence log cannot grow after
+  // the case-file hash is anchored. Best effort: the happy-path case file is a
+  // static URL, so a missing local API is not fatal here.
+  let sealed = null;
+  try { sealed = await sealOffchain('http://localhost:8000', HAPPY_OFFCHAIN_DEAL_ID); } catch (error) { console.error(`[happy] seal skipped: ${String(error.message || error)}`); }
   const dispute = await write('dispute', [id, HAPPY_URL, HAPPY_HASH], 0n, 'happy.dispute');
   const resolve = await write('resolve', [id], 0n, 'happy.resolve');
   let deal = await readDeal(id);
@@ -86,6 +93,16 @@ async function runHappy() {
 }
 
 async function apiJson(url, options) { const response = await fetch(url, options); const body = await response.json(); if (!response.ok) throw new Error(`${response.status} ${JSON.stringify(body)}`); return body; }
+
+// Freeze the off-chain log before disputing. The contract adjudicates against
+// the bytes hashed at dispute time, so sealing first is what makes the anchored
+// hash describe a record that can never grow afterwards. Kept in the same script
+// as the dispute transaction so the two cannot drift apart.
+async function sealOffchain(apiBase, dealId) {
+  const sealed = await apiJson(`${apiBase}/deals/${dealId}/seal`, { method: 'POST' });
+  console.log(`[${dealId}] evidence log sealed, chain_head=${sealed.chain_head}`);
+  return sealed.chain_head;
+}
 async function runAnchor() {
   // Isolated DB so repeated runs never collide with a previous off-chain deal.
   const dbPath = join(tmpdir(), `flight_recorder_anchor_${Date.now()}.db`);
