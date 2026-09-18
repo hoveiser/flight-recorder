@@ -5,12 +5,12 @@ branch below exercises the same code path production uses.
 """
 import json
 import hashlib
-import datetime
 
 from tests.direct.conftest import mock_json_llm, to_hex
 
 CONTRACT_PATH = "contracts/settlement.py"
 VALUE = 2 * 10**18
+TIMEOUT_SECONDS = 86400 * 7
 
 # The off-chain recorder commits SHA-256(canonical_json(definition_of_done)) as
 # the agreement hash (src/hash_chain.compute_agreement_hash). The contract
@@ -32,9 +32,64 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _iso(ts: int) -> str:
-    """Format a unix timestamp the way gl.message.datetime reports block time."""
-    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+# ---------------------------------------------------------------------------
+# Storage surgery helpers.
+#
+# gltest's direct loader exposes the live contract instance behind the calldata
+# proxy. Its `deals` TreeMap behaves like a dict and shares state with the
+# contract, so a record can be rewritten in place. This is how time-dependent
+# behaviour is tested: the stored timestamp moves, not the clock (warp does not
+# reach gl.message.datetime).
+# ---------------------------------------------------------------------------
+
+
+def _instance(c):
+    return object.__getattribute__(c, "_instance")
+
+
+def _deal_record(c, deal_id) -> dict:
+    return json.loads(_instance(c).deals[str(deal_id)])
+
+
+def _write_deal_record(c, deal_id, record: dict) -> None:
+    _instance(c).deals[str(deal_id)] = json.dumps(record)
+
+
+def _backdate_deal(c, deal_id, seconds: int) -> dict:
+    """Rewrite the stored record so the deal started `seconds` earlier."""
+    record = _deal_record(c, deal_id)
+    record["created_at_ts"] = record["created_at_ts"] - seconds
+    _write_deal_record(c, deal_id, record)
+    return record
+
+
+def _delete_deal_field(c, deal_id, field: str) -> dict:
+    record = _deal_record(c, deal_id)
+    record.pop(field, None)
+    _write_deal_record(c, deal_id, record)
+    return record
+
+
+def _raise_consensus(*_args, **_kwargs):
+    """Stand-in for the consensus entry point that always fails."""
+    raise RuntimeError("simulated consensus failure")
+
+
+def _force_consensus_failure(monkeypatch):
+    """Make the contract's consensus round raise.
+
+    _ai_round() runs in the test process in direct mode and reaches consensus
+    through genlayer.vm.run_nondet, which gltest has already swapped for its
+    direct-mode version. Patching that attribute holds for the contract module
+    too, so the failure happens inside resolve()'s protected block.
+
+    genlayer is imported lazily: it only becomes importable once the direct
+    loader has run, which happens during direct_deploy, so a module-level
+    import would fail at collection time.
+    """
+    import genlayer as gl
+
+    monkeypatch.setattr(gl.vm, "run_nondet", _raise_consensus)
 
 
 def _case_file(*, dod=None, chain=None, delivered=500) -> str:
@@ -308,12 +363,24 @@ def test_timeout_release_requires_seven_days(direct_vm, direct_deploy, direct_al
 
 
 def test_timeout_release_pays_worker_after_seven_days(direct_vm, direct_deploy, direct_alice, direct_bob):
-    """Past the timeout the worker is paid — the escrow is not trapped."""
+    """Past the deadline the worker is paid — the escrow is not trapped.
+
+    direct_vm.warp() cannot be used here: it updates the VM's own clock, but
+    the contract reads gl.message.datetime, which gltest sets once and never
+    refreshes, so warping does not move the time source _now() actually
+    consults. Instead the stored deal record is rewritten so its start time is
+    eight days in the past. That exercises timeout_release's real arithmetic
+    against a real stored value rather than faking the clock.
+    """
     c = direct_deploy(CONTRACT_PATH)
     did = _open(c, direct_vm, direct_alice, direct_bob)
-    created_at = json.loads(c.get_deal(did))["created_at_ts"]
-    warp_to = _iso(created_at + 86400 * 8)
-    direct_vm.warp(warp_to)
+
+    before = _deal_record(c, did)
+    _backdate_deal(c, did, seconds=TIMEOUT_SECONDS + 86400)
+    after = _deal_record(c, did)
+    assert after["created_at_ts"] == before["created_at_ts"] - (TIMEOUT_SECONDS + 86400), \
+        "test setup failed: the stored record was not rewritten"
+
     direct_vm.sender = direct_bob
     c.timeout_release(did)
     d = json.loads(c.get_deal(did))
@@ -323,3 +390,94 @@ def test_timeout_release_pays_worker_after_seven_days(direct_vm, direct_deploy, 
     payouts = json.loads(c.get_payouts())
     assert len(payouts) == 1
     assert payouts[0]["to"].lower() == to_hex(direct_bob).lower()
+    assert payouts[0]["amount"] == VALUE
+
+
+def test_timeout_release_fails_closed_without_created_at(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """A deal with no recorded start time must not be releasable.
+
+    d.get("created_at_ts", 0) would make the deadline look long past, paying
+    the worker immediately. The read is fail-closed instead.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _delete_deal_field(c, did, "created_at_ts")
+    assert "created_at_ts" not in _deal_record(c, did)
+
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("no created_at_ts"):
+        c.timeout_release(did)
+    assert json.loads(c.get_payouts()) == []
+
+
+# ---------------------------------------------------------------------------
+# A raising consensus round is a retry, not a dead end.
+#
+# Before this, resolve() caught the exception and returned without touching
+# fetch_failures, so a deal whose rounds kept raising sat in "disputed"
+# forever with the escrow stranded. The exception now consumes the same
+# allowance as UNREACHABLE and reaches unresolvable on the third failure.
+# ---------------------------------------------------------------------------
+
+
+def test_raised_round_increments_fetch_failures(direct_vm, direct_deploy, direct_alice, direct_bob, monkeypatch):
+    """One exception = one recorded attempt, deal stays retryable."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+
+    _force_consensus_failure(monkeypatch)
+    c.resolve(did)
+
+    d = json.loads(c.get_deal(did))
+    assert d["fetch_failures"] == 1, "the raised round must be counted"
+    assert d["status"] == "disputed", "the deal must stay resolvable"
+    assert "Consensus round raised" in d["reasoning"]
+    assert "retry allowed" in d["reasoning"]
+    assert json.loads(c.get_payouts()) == [], "a failure must never pay out"
+
+
+def test_repeated_raised_rounds_reach_unresolvable(direct_vm, direct_deploy, direct_alice, direct_bob, monkeypatch):
+    """Three exceptions drive the deal to unresolvable, not an endless stall."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+
+    _force_consensus_failure(monkeypatch)
+    for expected in (1, 2, 3):
+        c.resolve(did)
+        d = json.loads(c.get_deal(did))
+        assert d["fetch_failures"] == expected
+        if expected < 3:
+            assert d["status"] == "disputed"
+        else:
+            assert d["status"] == "unresolvable"
+            assert d["verdict"] == "UNRESOLVABLE"
+            assert "after 3 attempts" in d["reasoning"]
+
+    assert json.loads(c.get_payouts()) == []
+    # Terminal: further resolve attempts are refused rather than retried.
+    with direct_vm.expect_revert("Not in dispute"):
+        c.resolve(did)
+
+
+def test_raised_rounds_share_allowance_with_fetch_failures(direct_vm, direct_deploy, direct_alice, direct_bob, monkeypatch):
+    """Mixed transient failures add up instead of each getting a fresh budget."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.resolve(did)  # UNREACHABLE -> 1
+    assert json.loads(c.get_deal(did))["fetch_failures"] == 1
+
+    _force_consensus_failure(monkeypatch)
+    c.resolve(did)  # exception -> 2
+    assert json.loads(c.get_deal(did))["fetch_failures"] == 2
+
+    monkeypatch.undo()
+    c.resolve(did)  # UNREACHABLE again -> 3 => unresolvable
+    d = json.loads(c.get_deal(did))
+    assert d["fetch_failures"] == 3
+    assert d["status"] == "unresolvable"

@@ -30,6 +30,10 @@ EVIDENCE_VERDICTS = (
 RETRY_VERDICTS = ("UNREACHABLE", "UNVERIFIABLE", "UNSTRUCTURED")
 # The decisions that actually move escrow.
 DECISION_VERDICTS = ("APPROVED", "REFUNDED")
+# How many resolution attempts a deal gets before it is declared unresolvable.
+MAX_RESOLVE_ATTEMPTS = 3
+# Escrow stays locked for seven days if nothing happens to the deal.
+TIMEOUT_SECONDS = 86400 * 7
 
 
 class Settlement(gl.contract.Contract):
@@ -61,6 +65,30 @@ class Settlement(gl.contract.Contract):
     def _is_party(self, sender_addr, stored_addr: str) -> bool:
         sender_hex = sender_addr.as_hex if hasattr(sender_addr, "as_hex") else str(sender_addr)
         return sender_hex.lower() == stored_addr.lower()
+
+    def _count_retry(self, d: dict, note: str) -> dict:
+        """Record one failed resolution attempt and cap it at three.
+
+        Every non-judicial outcome funnels through here: a transient fetch
+        failure (UNREACHABLE), an unusable model response (UNVERIFIABLE /
+        UNSTRUCTURED), and an exception out of the consensus round itself.
+        They all mean "the evidence was never actually judged", so they all
+        consume the same allowance.
+
+        After MAX_RESOLVE_ATTEMPTS the deal stops being retryable and is marked
+        unresolvable. That terminal state is deliberately NOT a payout: an
+        unreachable case file is not evidence that the worker failed, so the
+        escrow stays put until the parties or the timeout path settle it.
+        """
+        attempts = d["fetch_failures"] + 1
+        d["fetch_failures"] = attempts
+        if attempts >= MAX_RESOLVE_ATTEMPTS:
+            d["status"] = "unresolvable"
+            d["verdict"] = "UNRESOLVABLE"
+            d["reasoning"] = f"{note} (after {MAX_RESOLVE_ATTEMPTS} attempts)"
+        else:
+            d["reasoning"] = f"{note} (retry allowed)"
+        return d
 
     def _payout(self, d: dict, to_addr: str, amount: int) -> dict:
         """Move escrow to `to_addr` and record it, in that order.
@@ -303,21 +331,19 @@ class Settlement(gl.contract.Contract):
             verdict = result.get("verdict", "NONE")
             ai_text = str(result.get("reasoning", ""))[:300]
         except Exception as e:
-            # run_nondet can raise when consensus cannot be reached at all.
-            # Leave the deal in dispute so it can be resolved again; the
-            # failure reason goes into `reasoning`, not into a debug field.
-            d["reasoning"] = "Resolution attempt failed: " + str(e)[:200]
-            self.deals[str(deal_id)] = json.dumps(d)
-            return
+            # run_nondet can raise when consensus cannot be reached at all
+            # (no quorum, validator disagreement that exhausts rotation, a
+            # runtime fault). That is the same class of event as UNREACHABLE
+            # or UNVERIFIABLE: the evidence was never judged. Treating it as
+            # something other than a retry would leave the deal parked in
+            # "disputed" forever with the escrow stranded, because a raising
+            # round is exactly the case where a later round might succeed.
+            # So it is folded into the retry verdict and shares the counter.
+            verdict = "UNVERIFIABLE"
+            ai_text = "Consensus round raised: " + str(e)[:200]
 
         if verdict in RETRY_VERDICTS:
-            d["fetch_failures"] = d["fetch_failures"] + 1
-            if d["fetch_failures"] >= 3:
-                d["status"] = "unresolvable"
-                d["verdict"] = "UNRESOLVABLE"
-                d["reasoning"] = ai_text + " (after 3 attempts)"
-            else:
-                d["reasoning"] = ai_text + " (retry allowed)"
+            d = self._count_retry(d, ai_text)
             self.deals[str(deal_id)] = json.dumps(d)
             return
 
@@ -393,7 +419,15 @@ class Settlement(gl.contract.Contract):
         d = json.loads(self.deals[str(deal_id)])
         if d["status"] != "funded":
             raise gl.vm.UserError("Not funded")
-        if not (self._now() > d.get("created_at_ts", 0) + 86400 * 7):
+        # Fail closed. A permissive default (d.get("created_at_ts", 0)) would
+        # make the deadline look long past for any deal whose timestamp went
+        # missing, releasing the escrow to the worker on day one. A deal
+        # without a recorded start time has no deadline we can trust, so the
+        # call reverts instead of guessing.
+        created_at = d.get("created_at_ts")
+        if not isinstance(created_at, int):
+            raise gl.vm.UserError("Deal has no created_at_ts; cannot compute timeout")
+        if not (self._now() > created_at + TIMEOUT_SECONDS):
             raise gl.vm.UserError("Timeout not reached (7 days)")
         d["verdict"] = "TIMEOUT"
         d["reasoning"] = "No dispute within timeout window"

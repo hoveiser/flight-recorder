@@ -73,6 +73,8 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
+Expected: **30 passed** (9 off-chain + 21 direct-mode).
+
 ## On-Chain Settlement (Studio Next)
 
 The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
@@ -88,6 +90,14 @@ Run the end-to-end flow from the repository root:
 Run the direct Settlement tests:
 
     pytest tests/direct/test_settlement.py -v
+
+### Deployment history
+
+| Version | Address | What it is |
+|---------|---------|------------|
+| **v1** | `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` | Demo-video lifecycle: the first end-to-end run used in the recorded walkthrough. |
+| **v2** | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Current on-chain deployment. Carries the live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output. |
+| **v3** | repo HEAD (not redeployed) | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
 
 ### 3. Run Demos
 
@@ -144,8 +154,15 @@ Run the direct Settlement tests:
 | APPROVED | Worker fulfilled agreement | Worker gets paid |
 | REFUNDED | Worker failed to deliver | Client gets refund |
 | EVIDENCE_MISMATCH | Case file was tampered | Client gets refund |
+| AGREEMENT_MISMATCH ¹ | Case-file terms are not the anchored agreement hash | Client gets refund |
+| ANCHOR_MISMATCH ¹ | Case-file chain head is not the anchored head | Client gets refund |
 | UNRESOLVABLE | Too many failed attempts | No payout |
 | TIMEOUT | No dispute filed | Worker gets paid |
+
+¹ **v3 onward, repo HEAD.** These two verdicts are added by the hardening work
+on the repo HEAD and are covered by the direct-mode test suite. They are not yet
+present in the deployed v2 contract address below, which is why the on-chain
+evidence stays a continuous v2 record.
 
 ## Hash Chain
 
@@ -186,7 +203,7 @@ Each event is linked to the previous one:
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
     │   ├── test_flight_recorder.py  # Off-chain tests (9 tests)
-    │   └── direct/test_settlement.py # On-chain tests (8 tests)
+    │   └── direct/test_settlement.py # Direct-mode tests (21 tests)
     ├── demo/
     │   ├── scraper_dispute.py
     │   └── code_quality_dispute.py
