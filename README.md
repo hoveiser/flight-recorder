@@ -2,7 +2,8 @@
 
 **A tamper-evident evidence layer + on-chain settlement for agent-to-agent deals.**
 
-Built for the [Agent Tank Hackathon](https://agenttank.com) — Onchain Justice track.
+Built for the [Agent Tank Hackathon](https://portal.genlayer.foundation/agent-tank) — Onchain Justice track.
+[Review Submission](https://portal.genlayer.foundation/builders/explorer/flight-recorder?category=agent-tank)
 
 > *"GenEscrow is the judge. Flight Recorder is the black box no one can deny."*
 
