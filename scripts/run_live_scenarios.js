@@ -138,13 +138,80 @@ async function runTimeout() {
   return { id, txs: { open_deal: open.txHash, timeout_release: timeout?.txHash || null }, deal, payouts: await readPayouts(), error };
 }
 
+/** Flip the last hex character so the digest is still 64 hex chars but wrong. */
+function corruptHash(hash) {
+  const last = hash.slice(-1);
+  const flipped = (parseInt(last, 16) ^ 0xf).toString(16);
+  return hash.slice(0, -1) + flipped;
+}
+
+/**
+ * Scenario 4: anchor a deliberately WRONG case-file hash.
+ *
+ * The evidence itself is genuine: we fetch the very bytes the happy path uses
+ * and hash them locally. Only the hash committed in dispute() is corrupted, so
+ * validators re-fetch the real file, recompute the true digest, and compare it
+ * against what was anchored. The mismatch is therefore a property of the
+ * on-chain record, not of the fetch, and it is deterministic: validators hash
+ * identical public bytes and must all land on MISMATCH.
+ *
+ * MISMATCH is an EVIDENCE_VERDICT, so resolve() refunds the client immediately
+ * and sets status="refunded" — the payout happens inside resolve(), not in
+ * finalize(). That is why no finalize transaction appears below.
+ */
+async function runMismatch() {
+  const externalId = 'mismatch_live_001';
+  const response = await fetch(HAPPY_URL);
+  if (!response.ok) throw new Error(`Could not fetch evidence for hashing: HTTP ${response.status}`);
+  const served = Buffer.from(await response.arrayBuffer());
+  const trueHash = createHash('sha256').update(served).digest('hex');
+  const wrongHash = corruptHash(trueHash);
+  console.log(`[mismatch] evidence url=${HAPPY_URL}`);
+  console.log(`[mismatch] served_bytes=${served.length} true_hash=${trueHash}`);
+  console.log(`[mismatch] anchored_hash=${wrongHash} (deliberately wrong)`);
+
+  const { id, open } = await createOnchainDeal(externalId, 300, HAPPY_AGREEMENT_HASH);
+  const dispute = await write('dispute', [id, HAPPY_URL, wrongHash], 0n, 'mismatch.dispute');
+  const resolve = await write('resolve', [id], 0n, 'mismatch.resolve');
+  let deal = await readDeal(id);
+  let finalize = null;
+  // Defensive: refunds for evidence verdicts happen inside resolve(). If the
+  // contract ever moves the payout to finalize, run it and record the tx.
+  if (deal.status === 'adjudicated') { finalize = await write('finalize', [id], 0n, 'mismatch.finalize'); deal = await readDeal(id); }
+  const payouts = await readPayouts();
+  const refund = payouts.filter((p) => String(p.to).toLowerCase() === String(deal.client).toLowerCase());
+  console.log(`[mismatch] verdict=${deal.verdict} status=${deal.status} payout_status=${deal.payout_status}`);
+  console.log(`[mismatch] client=${deal.client} refund_entries=${JSON.stringify(refund)}`);
+  if (deal.verdict !== 'EVIDENCE_MISMATCH') {
+    throw new Error(`Expected EVIDENCE_MISMATCH but got verdict=${deal.verdict} status=${deal.status} reasoning=${deal.reasoning}`);
+  }
+  return {
+    id,
+    external_deal_id: externalId,
+    case_file_url: HAPPY_URL,
+    served_bytes: served.length,
+    true_hash: trueHash,
+    anchored_hash: wrongHash,
+    refund,
+    txs: { open_deal: open.txHash, dispute: dispute.txHash, resolve: resolve.txHash, finalize: finalize?.txHash || null },
+    deal,
+    payouts,
+  };
+}
+
 async function main() {
   const results = {};
   const requested = process.argv.slice(2);
-  const shouldRun = (name) => requested.length === 0 || requested.includes(`--${name}`);
+  // SCENARIOS=mismatch (or "happy,anchor") narrows the run to just those
+  // scenarios; the argv --happy/--anchor/--timeout/--mismatch flags still work.
+  const envScenarios = (process.env.SCENARIOS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const shouldRun = (name) => (envScenarios.length > 0
+    ? envScenarios.includes(name)
+    : requested.length === 0 || requested.includes(`--${name}`));
   if (shouldRun('happy')) try { results.happy = await runHappy(); console.log('SCENARIO_HAPPY=' + JSON.stringify(results.happy)); console.log('EXPLORERS=' + JSON.stringify(txsOf(results.happy))); } catch (error) { results.happy = { error: String(error.message || error) }; console.error('SCENARIO_HAPPY_ERROR=' + results.happy.error); }
   if (shouldRun('anchor')) try { results.anchor = await runAnchor(); console.log('SCENARIO_ANCHOR=' + JSON.stringify(results.anchor)); console.log('EXPLORERS_ANCHOR=' + JSON.stringify(txsOf(results.anchor))); } catch (error) { results.anchor = { error: String(error.message || error) }; console.error('SCENARIO_ANCHOR_ERROR=' + results.anchor.error); }
   if (shouldRun('timeout')) try { results.timeout = await runTimeout(); console.log('SCENARIO_TIMEOUT=' + JSON.stringify(results.timeout)); console.log('EXPLORERS_TIMEOUT=' + JSON.stringify(txsOf(results.timeout))); } catch (error) { results.timeout = { error: String(error.message || error) }; console.error('SCENARIO_TIMEOUT_ERROR=' + results.timeout.error); }
+  if (shouldRun('mismatch')) try { results.mismatch = await runMismatch(); console.log('SCENARIO_MISMATCH=' + JSON.stringify({ id: results.mismatch.id, external_deal_id: results.mismatch.external_deal_id, case_file_url: results.mismatch.case_file_url, served_bytes: results.mismatch.served_bytes, true_hash: results.mismatch.true_hash, anchored_hash: results.mismatch.anchored_hash, refund: results.mismatch.refund, verdict: results.mismatch.deal.verdict, status: results.mismatch.deal.status, payout_status: results.mismatch.deal.payout_status, reasoning: results.mismatch.deal.reasoning, txs: results.mismatch.txs })); console.log('EXPLORERS_MISMATCH=' + JSON.stringify(txsOf(results.mismatch))); } catch (error) { results.mismatch = { error: String(error.message || error) }; console.error('SCENARIO_MISMATCH_ERROR=' + results.mismatch.error); }
   try { results.balance = String(await client.getBalance({ address: account.address })); } catch (error) { results.balance_error = String(error.message || error); }
   console.log('SCENARIOS=' + JSON.stringify(results));
 }
