@@ -101,6 +101,35 @@
 
 ---
 
+## Day 7-8 (Sep 17-18) — Review-period hardening
+
+**Goal:** Use the post-submission review window to harden the contract, close the
+evidence-integrity gap, and fold in community feedback.
+
+**Built:**
+- v3 contract hardening on branch `harden-v3`:
+  - payout atomicity (transfer before payout record, failures revert the whole tx)
+  - `agreement_hash` verified in `_ai_round` → AGREEMENT_MISMATCH
+  - `anchor_milestone` read during resolve → ANCHOR_MISMATCH
+  - deterministic `_now` with no wall-clock fallback
+  - consensus exceptions routed to the retry counter
+  - fail-closed `created_at_ts`
+- Timeout success test rewritten as storage surgery because direct mode cannot
+  advance `gl.message.datetime`.
+- Evidence seal: `POST /deals/{id}/seal` freezes the log at dispute; post-seal
+  writes rejected with 409.
+- Site gains `00 / ABOUT`; docs gain Deployment history (v1/v2/v3), v3 verdict
+  notes, and Roadmap & open questions.
+- Suite grew 17 → 30 → 32 passed; CI green on every branch push.
+- Community feedback folded in: About section (review by COCO), ambiguous-dispute
+  benchmark moved to roadmap (review by Afraa).
+- On-chain history unchanged: v1 = demo video, v2 = current live deployment,
+  v3 = repo HEAD awaiting post-hackathon redeploy.
+
+**Tests:** 32 passing (11 off-chain + 21 direct-mode)
+
+---
+
 ## Architecture Decisions
 
 ### Why off-chain evidence?
@@ -127,8 +156,8 @@ GenLayer has native AI adjudication (validators reach consensus on verdicts). Et
 | Day 2 | Dispute + case file export | ✅ Done |
 | Day 3 | Demo scenarios | ✅ Done |
 | Day 4 | Settlement contract + tests | ✅ Done |
-| Day 5 | Demo integration + UI | 🚧 In Progress |
-| Day 6 | README polish + video | ⏳ Pending |
-| Day 7 | Submit | ⏳ Pending |
+| Day 5 | Demo integration + UI | ✅ Done — widgets + mobile + GenLayer branding |
+| Day 6 | README polish + video | ✅ Done — 5:45 demo video recorded |
+| Day 7 | Submit | ✅ Done — submitted Sep 17; portal edited post-submission |
 
 **We are 2 days ahead of schedule.** 🏆

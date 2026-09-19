@@ -160,3 +160,65 @@ def test_dispute_and_case_file(client, deal):
     assert case["disputes"][0]["party"] == "agentA"
     assert case["chain_integrity"]["verification"] == "PASS"
     assert case["definition_of_done"]["success"] == "1000 valid rows"
+
+
+def test_seal_freeze_and_head_hash(client, deal):
+    deal_id = deal["deal_id"]
+    for i in range(2):
+        resp = client.post(
+            "/events",
+            json={"deal_id": deal_id, "actor": "agentA", "event_type": "DELIVERY", "payload": {"i": i}},
+        )
+        assert resp.status_code == 200
+
+    events = client.get(f"/deals/{deal_id}/events").json()
+    expected_head = events[-1]["event_hash"]
+
+    resp = client.post(f"/deals/{deal_id}/seal")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sealed"] is True
+    assert body["chain_head"] == expected_head
+    assert body["events"] == 2
+    assert client.get(f"/deals/{deal_id}").json()["sealed"] is True
+
+    # Idempotent: sealing again returns the same frozen head.
+    again = client.post(f"/deals/{deal_id}/seal")
+    assert again.status_code == 200
+    assert again.json()["chain_head"] == expected_head
+
+    # The seal is what makes the anchored hash final: further appends are
+    # rejected with 409 and must not land in the log.
+    rejected = client.post(
+        "/events",
+        json={"deal_id": deal_id, "actor": "agentA", "event_type": "DELIVERY", "payload": {"i": 99}},
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"] == "Evidence log sealed after dispute"
+    assert len(client.get(f"/deals/{deal_id}/events").json()) == 2
+
+    assert client.post("/deals/nope/seal").status_code == 404
+
+
+def test_sealed_deal_chain_still_verifies(client, deal):
+    deal_id = deal["deal_id"]
+    for i in range(3):
+        resp = client.post(
+            "/events",
+            json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST", "payload": {"i": i}},
+        )
+        assert resp.status_code == 200
+
+    assert client.post(f"/deals/{deal_id}/seal").status_code == 200
+
+    # Sealing freezes writes; it must not break verification or case-file export.
+    resp = client.get(f"/deals/{deal_id}/verify")
+    body = resp.json()
+    assert body["verification"] == "PASS"
+    assert body["events"] == 3
+
+    resp = client.get(f"/deals/{deal_id}/case-file")
+    assert resp.status_code == 200
+    case = resp.json()
+    assert case["chain_integrity"]["verification"] == "PASS"
+    assert len(case["events"]) == 3

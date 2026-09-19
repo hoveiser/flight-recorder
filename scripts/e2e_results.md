@@ -7,10 +7,12 @@ Explorer: <https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C666
 Run with:
 
 ```
-node scripts/run_live_scenarios.js            # all three scenarios
+node scripts/run_live_scenarios.js            # every scenario
 node scripts/run_live_scenarios.js --happy    # happy path only
 node scripts/run_live_scenarios.js --anchor   # off-chain anchor only
 node scripts/run_live_scenarios.js --timeout  # 7-day lock check only
+node scripts/run_live_scenarios.js --mismatch # evidence-mismatch refund only
+SCENARIOS=mismatch node scripts/run_live_scenarios.js   # same, via env flag
 ```
 
 ## Scenario Matrix
@@ -21,6 +23,7 @@ node scripts/run_live_scenarios.js --timeout  # 7-day lock check only
 | 1 / Happy path (earlier run) | 1 | `released` / `APPROVED` | Worker: 0.1 GEN | Same case file, same verdict |
 | 2 / Off-chain anchor | 2 | `funded`; `delivery` milestone anchored | None | Chain head written on-chain and readable back |
 | 3 / Timeout release | 3 | `funded`; early release correctly rejected | None | `Timeout not reached (7 days)` — escrow lock enforced |
+| 4 / Evidence mismatch | 5 | `refunded` / `EVIDENCE_MISMATCH` | Client: 0.1 GEN | Wrong case-file hash anchored on-chain; refunded inside `resolve` |
 
 ### Why the happy path now resolves to APPROVED
 
@@ -52,6 +55,9 @@ check reproduce the same digest a user computes locally with `sha256sum`.
 | 2 | `anchor_milestone` | FINALIZED | `0x6d87f4edb69d24e05367163de8a9dc83d7f3dc15fa630d281d63b6e6a7cc1cd5` | [View](https://explorer-studio-dev.genlayer.com/tx/0x6d87f4edb69d24e05367163de8a9dc83d7f3dc15fa630d281d63b6e6a7cc1cd5) |
 | 3 | `open_deal` | FINALIZED | `0x38128f22cab6d8260f32b97a2332ecabbe4722c033014f7023ec38560b52cf37` | [View](https://explorer-studio-dev.genlayer.com/tx/0x38128f22cab6d8260f32b97a2332ecabbe4722c033014f7023ec38560b52cf37) |
 | 3 | `timeout_release` | FINALIZED; rejected | `0x19ca7d54d49cc5c75435e5d9fd9f4e1d9f9d60521a082a0e36a966efdb70e13d` | [View](https://explorer-studio-dev.genlayer.com/tx/0x19ca7d54d49cc5c75435e5d9fd9f4e1d9f9d60521a082a0e36a966efdb70e13d) |
+| 4 | `open_deal` | FINALIZED | `0x417dbcfa30c854b8b97851aa5f21c40f553cf396d3eab7cd2289cd926e2c06b0` | [View](https://explorer-studio-dev.genlayer.com/tx/0x417dbcfa30c854b8b97851aa5f21c40f553cf396d3eab7cd2289cd926e2c06b0) |
+| 4 | `dispute` | FINALIZED | `0x9795d8e51ae9086884109343da6c7c3891eac1f26b7f18ff69e1e845505de371` | [View](https://explorer-studio-dev.genlayer.com/tx/0x9795d8e51ae9086884109343da6c7c3891eac1f26b7f18ff69e1e845505de371) |
+| 4 | `resolve` | FINALIZED | `0x535b7200c4565845abdb8ae1caf59c03390abc860536be4545075d88c1e33ac9` | [View](https://explorer-studio-dev.genlayer.com/tx/0x535b7200c4565845abdb8ae1caf59c03390abc860536be4545075d88c1e33ac9) |
 
 ## Verdict Detail (Deal 4)
 
@@ -62,6 +68,40 @@ check reproduce the same digest a user computes locally with `sha256sum`.
 | `status` | `released` |
 | `fetch_failures` | `0` |
 | Reasoning | Validators agreed: APPROVED. The case file shows no disputes, chain integrity passed, and no evidence of failed delivery or unmet acceptance criteria, so fulfillment is supported by the available record. |
+
+## Verdict Detail (mismatch deal)
+
+Deal 5 (`mismatch_live_001`) is the tamper path, demonstrated live. The evidence
+served is the **real** public case file — the same URL and bytes as the happy
+path — but the hash committed in `dispute` is deliberately wrong.
+
+| Field | Value |
+| --- | --- |
+| `case_file_url` | `https://raw.githubusercontent.com/hoveiser/flight-recorder/main/demo/case_files/happy_path.json` |
+| `case_file_hash` served (true SHA-256 of the bytes) | `ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf7` |
+| `case_file_hash` anchored at dispute time | `ac00e51fd82e9dff1df4e2fd120cf35fbf8229f6fd415a8b89154ed152733cf8` |
+| Difference | Final hex character flipped (`…cf7` → `…cf8`) |
+| `verdict` | `EVIDENCE_MISMATCH` |
+| `status` | `refunded` |
+| `fetch_failures` | `0` |
+| Refund | Client `0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E` receives `100000000000000000` wei (0.1 GEN) |
+| Reasoning | `Case file hash mismatch` |
+
+Validators' reasoning: `_ai_round` hashes the raw response body and compares it
+against `case_file_hash` before any other check. The stored hash (`…cf8`) is not
+the digest of the fetched file (`…cf7`), so every validator independently lands
+on `MISMATCH` — a verdict derived from the bytes, not from the model, which is
+why it must agree exactly. `resolve` maps `MISMATCH` to the public label
+`EVIDENCE_MISMATCH`, pays the client through `_payout`, and sets
+`status = "refunded"`.
+
+Two consequences worth stating explicitly:
+
+- **The refund happens inside `resolve`, not in `finalize`.** There is no
+  fourth transaction for this deal. `finalize` only ever pays out an
+  `adjudicated` deal, and an evidence verdict never reaches that status.
+- **No appeal is offered.** Retrying the same bytes cannot change a hash, so
+  `appeals_used` stays `0` and the escrow is returned immediately.
 
 ## Off-Chain Anchor (Deal 2)
 
@@ -74,5 +114,5 @@ off-chain log.
 ## Balance
 
 The deployer address `0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E` holds
-`29496625500999965962` wei, or `29.496625500999965962 GEN`, after running all
-scenarios on this contract.
+`29496341696499963493` wei, or `29.496341696499963493 GEN`, after running all
+scenarios on this contract (including the mismatch run).

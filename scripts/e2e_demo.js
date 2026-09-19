@@ -11,6 +11,8 @@ const FEE_PROFILE = JSON.parse(readFileSync('fee-profile.json', 'utf-8'));
 const PRIVATE_KEY = process.env.ACCOUNT_PRIVATE_KEY_1;
 const ACCOUNT_ADDRESS = '0x1111111111111111111111111111111111111111';
 const CASE_FILE_URL = 'https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json';
+const API_BASE = 'http://localhost:8000';
+const OFFCHAIN_DEAL_ID = 'demo_scraper_001';
 
 if (!PRIVATE_KEY) {
     console.error('ACCOUNT_PRIVATE_KEY_1 not found in .env');
@@ -135,6 +137,18 @@ async function main() {
     const caseFile = await fetchCaseFileHash(CASE_FILE_URL);
     console.log('\n[dispute] case file hash:', caseFile.hash);
     console.log('[dispute] case file URL:', CASE_FILE_URL);
+
+    // Seal the off-chain log right before disputing, so the anchored hash
+    // describes a record that can no longer be appended to. Best effort: this
+    // script does not start the API itself, and the case file it disputes is a
+    // static GitHub URL rather than a live off-chain deal.
+    try {
+        const sealResponse = await fetch(`${API_BASE}/deals/${OFFCHAIN_DEAL_ID}/seal`, { method: 'POST' });
+        const sealResult = await sealResponse.json();
+        console.log('[dispute] evidence log sealed, chain_head:', sealResult.chain_head);
+    } catch (error) {
+        console.log('[dispute] seal skipped (off-chain API not reachable):', error.message);
+    }
 
     const disputeResult = await writeWithFees({
         functionName: 'dispute',

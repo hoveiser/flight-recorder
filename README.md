@@ -73,6 +73,8 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
+Expected: **32 passed** (11 off-chain + 21 direct-mode).
+
 ## On-Chain Settlement (Studio Next)
 
 The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
@@ -88,6 +90,14 @@ Run the end-to-end flow from the repository root:
 Run the direct Settlement tests:
 
     pytest tests/direct/test_settlement.py -v
+
+### Deployment history
+
+| Version | Address | What it is |
+|---------|---------|------------|
+| **v1** | `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` | Demo-video lifecycle: the first end-to-end run used in the recorded walkthrough. |
+| **v2** | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Current on-chain deployment. Carries the live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output. |
+| **v3** | repo HEAD (not redeployed) | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
 
 ### 3. Run Demos
 
@@ -105,6 +115,7 @@ Run the direct Settlement tests:
 | POST | /events | Record an event into the hash chain |
 | GET | /deals/{deal_id}/events | Get all events for a deal |
 | GET | /deals/{deal_id}/verify | Verify hash chain integrity |
+| POST | /deals/{deal_id}/seal | Freeze the evidence log, return chain head |
 | POST | /deals/{deal_id}/dispute | File a dispute (parties only) |
 | GET | /deals/{deal_id}/disputes | Get all disputes |
 | GET | /deals/{deal_id}/case-file | Export case file for adjudication |
@@ -144,8 +155,15 @@ Run the direct Settlement tests:
 | APPROVED | Worker fulfilled agreement | Worker gets paid |
 | REFUNDED | Worker failed to deliver | Client gets refund |
 | EVIDENCE_MISMATCH | Case file was tampered | Client gets refund |
+| AGREEMENT_MISMATCH ¹ | Case-file terms are not the anchored agreement hash | Client gets refund |
+| ANCHOR_MISMATCH ¹ | Case-file chain head is not the anchored head | Client gets refund |
 | UNRESOLVABLE | Too many failed attempts | No payout |
 | TIMEOUT | No dispute filed | Worker gets paid |
+
+¹ **v3 onward, repo HEAD.** These two verdicts are added by the hardening work
+on the repo HEAD and are covered by the direct-mode test suite. They are not yet
+present in the deployed v2 contract address below, which is why the on-chain
+evidence stays a continuous v2 record.
 
 ## Hash Chain
 
@@ -158,6 +176,27 @@ Each event is linked to the previous one:
 **Tamper detection:**
 - Modify any payload → hash chain breaks → verify returns FAIL
 - Delete any event → chain has gap → verify returns FAIL
+
+### Evidence seal
+
+The chain is append-only while a deal is live. The moment a dispute is filed the
+log **freezes**: `POST /deals/{deal_id}/seal` sets a `sealed` flag on the deal and
+returns the current chain head hash — the exact value that gets anchored on-chain
+by `dispute`. After that, `POST /events` for the deal is rejected with
+**HTTP 409 `Evidence log sealed after dispute`**.
+
+Why: the contract adjudicates against the case-file hash anchored at dispute
+time. If events could still be appended afterwards, a party could pad the log
+with favourable entries after anchoring, leaving the on-chain hash describing a
+record that no longer exists off-chain. Sealing makes the anchored hash final.
+
+Sealing is idempotent — calling it twice returns the same head hash. It freezes
+*writes* only: `GET /deals/{deal_id}/verify` and `GET /deals/{deal_id}/case-file`
+keep working and the chain still verifies `PASS`.
+
+Both live-demo scripts (`scripts/run_live_scenarios.js`, `scripts/e2e_demo.js`)
+call `/seal` immediately before sending the on-chain `dispute` transaction, so
+sealing is never a step anyone has to remember.
 
 ## Case File Format
 
@@ -185,12 +224,36 @@ Each event is linked to the previous one:
     ├── contracts/
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
-    │   ├── test_flight_recorder.py  # Off-chain tests (9 tests)
-    │   └── direct/test_settlement.py # On-chain tests (8 tests)
+    │   ├── test_flight_recorder.py  # Off-chain tests (11 tests)
+    │   └── direct/test_settlement.py # Direct-mode tests (21 tests)
     ├── demo/
     │   ├── scraper_dispute.py
     │   └── code_quality_dispute.py
     └── README.md
+
+## Roadmap & open questions
+
+Known gaps, stated plainly rather than discovered later:
+
+- **Ambiguous-dispute benchmark.** Add partial-delivery, conflicting-validation and
+  missing-evidence case files with their expected verdicts, and execute them in
+  direct mode so the equivalence principle is measured against cases where the
+  right answer is genuinely contested, not only the clear-cut ones.
+- **Signature-based actor authentication for `/events`.** Event writes are currently
+  trust-based (MVP): the caller asserts an `actor` string. Signing events with the
+  actor's key would make attribution verifiable rather than claimed.
+- **Per-deal write locking or `BEGIN IMMEDIATE` transactions.** The hash chain has a
+  concurrency race: two simultaneous `/events` calls for the same deal can both read
+  the same previous hash and fork the chain. Serializing writes per deal removes it.
+- **Appeal with new evidence.** Today `appeal` re-runs consensus over the *same*
+  anchored case file, so it can only produce a different verdict by chance. A real
+  appeal would accept a new case-file hash and re-anchor it.
+- **Redeploy v3 to Studio Next.** The deployed contract is v2 while the repo HEAD is
+  v3, so the hardening (agreement/anchor verification, fail-closed timeout, exception
+  retry) is proven by the direct-mode suite but not yet by on-chain execution.
+  Deliberately deferred to post-hackathon so the live evidence stays continuous.
+- **Browser-executed dispute flow.** Wallet connect, Studio Next chain switch,
+  integrated faucet, and in-browser open_deal/dispute/resolve/finalize.
 
 ## Tech Stack
 

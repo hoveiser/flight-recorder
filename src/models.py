@@ -32,6 +32,9 @@ class Deal(DealCreate):
     """Stored deal"""
     agreement_hash: str
     created_at: datetime
+    # Once a dispute is filed the evidence log is frozen: no further events may
+    # be appended, so the anchored case file can never be extended afterwards.
+    sealed: bool = False
 
 
 class DisputeCreate(BaseModel):
