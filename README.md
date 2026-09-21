@@ -101,6 +101,10 @@ Run the direct Settlement tests:
 | **v3** | repo HEAD (not redeployed) | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
 **Current status:** v3 contract code is merged to main and covered by direct-mode tests (32 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap.
 
+## Versioning
+
+On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, live). Code generations are numbered v3 (merged, not redeployed), v4 (hardening + first roadmap items), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
+
 ### 3. Run Demos
 
     python demo/scraper_dispute.py
