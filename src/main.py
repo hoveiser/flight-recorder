@@ -1,9 +1,13 @@
+import secrets
 import threading
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone
 from pydantic import BaseModel
 from . import db
 from .models import EventCreate, Event, DealCreate, Deal, DisputeCreate, Dispute
@@ -15,8 +19,17 @@ from .hash_chain import (
 )
 
 app = FastAPI(title="Flight Recorder", version="0.2.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 db.init_db()
+
+_nonces: dict[str, datetime] = {}
+_sessions: dict[str, dict] = {}
 
 _deal_write_locks: dict[str, threading.Lock] = {}
 _deal_write_locks_guard = threading.Lock()
@@ -33,6 +46,50 @@ def _deal_write_lock(deal_id: str) -> threading.Lock:
 
 class SealBody(BaseModel):
     actor: Optional[str] = None
+
+
+class AuthVerify(BaseModel):
+    address: str
+    signature: str
+    nonce: str
+
+
+def _require_session(authorization: Optional[str]) -> str:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing session token")
+    token = authorization.split(" ", 1)[1].strip()
+    record = _sessions.get(token)
+    now = datetime.now(timezone.utc)
+    if record is None or record["expires_at"] < now:
+        raise HTTPException(401, "Invalid or expired session")
+    return record["address"]
+
+
+@app.post("/api/auth/nonce")
+def auth_nonce():
+    nonce = f"Flight Recorder login {secrets.token_hex(16)}"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    _nonces[nonce] = expires_at
+    return {"nonce": nonce, "expires_at": expires_at.isoformat()}
+
+
+@app.post("/api/auth/verify")
+def auth_verify(body: AuthVerify):
+    expires_at = _nonces.get(body.nonce)
+    now = datetime.now(timezone.utc)
+    if expires_at is None or expires_at < now:
+        raise HTTPException(401, "Nonce missing or expired")
+    try:
+        recovered = Account.recover_message(encode_defunct(text=body.nonce), signature=body.signature)
+    except Exception:
+        raise HTTPException(401, "Invalid signature")
+    if recovered.lower() != body.address.lower():
+        raise HTTPException(401, "Signature does not match address")
+    del _nonces[body.nonce]
+    token = secrets.token_urlsafe(32)
+    session_expires = now + timedelta(days=7)
+    _sessions[token] = {"address": recovered, "expires_at": session_expires}
+    return {"session_token": token, "expires_at": session_expires.isoformat()}
 
 
 @app.post("/deals", response_model=Deal)
@@ -59,7 +116,8 @@ def get_deal(deal_id: str):
 
 
 @app.post("/events", response_model=Event)
-def record_event(event_in: EventCreate):
+def record_event(event_in: EventCreate, authorization: Optional[str] = Header(default=None)):
+    _require_session(authorization)
     with _deal_write_lock(event_in.deal_id):
         deal = db.get_deal(event_in.deal_id)
         if deal is None:
@@ -113,6 +171,7 @@ def seal_deal(
     deal_id: str,
     body: Optional[SealBody] = None,
     x_actor: Optional[str] = Header(default=None, alias="X-Actor"),
+    authorization: Optional[str] = Header(default=None),
 ):
     """Freeze the evidence log and return the head hash that must be anchored.
 
@@ -120,6 +179,7 @@ def seal_deal(
     head hash. Call this immediately before sending the on-chain dispute so the
     anchored hash describes a log that can no longer change.
     """
+    _require_session(authorization)
     deal = db.get_deal(deal_id)
     if deal is None:
         raise HTTPException(404, "Deal not found")

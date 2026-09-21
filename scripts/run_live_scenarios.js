@@ -98,10 +98,21 @@ async function apiJson(url, options) { const response = await fetch(url, options
 // the bytes hashed at dispute time, so sealing first is what makes the anchored
 // hash describe a record that can never grow afterwards. Kept in the same script
 // as the dispute transaction so the two cannot drift apart.
-async function sealOffchain(apiBase, dealId, actor) {
-  const sealed = await apiJson(`${apiBase}/deals/${dealId}/seal`, {
+async function sessionHeaders(apiBase, actor) {
+  const { nonce } = await apiJson(`${apiBase}/api/auth/nonce`, { method: 'POST' });
+  const signature = await actor.signMessage({ message: nonce });
+  const session = await apiJson(`${apiBase}/api/auth/verify`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ address: actor.address, signature, nonce }),
+  });
+  return { 'content-type': 'application/json', Authorization: `Bearer ${session.session_token}` };
+}
+async function sealOffchain(apiBase, dealId, actor) {
+  const headers = await sessionHeaders(apiBase, account);
+  const sealed = await apiJson(`${apiBase}/deals/${dealId}/seal`, {
+    method: 'POST',
+    headers,
     body: JSON.stringify({ actor }),
   });
   console.log(`[${dealId}] evidence log sealed, chain_head=${sealed.chain_head}`);
@@ -121,7 +132,8 @@ async function runAnchor() {
     }
     const id = `anchor_demo_${Date.now()}`;
     await apiJson('http://localhost:8000/deals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deal_id: id, definition_of_done: { success_criteria: 'test' }, agreement_hash: '0'.repeat(64), parties: [account.address, WORKER] }) });
-    for (const eventType of ['REQUEST', 'DELIVERY', 'VALIDATION']) await apiJson('http://localhost:8000/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deal_id: id, actor: account.address, event_type: eventType, payload: { scenario: 'anchor' } }) });
+    const eventHeaders = await sessionHeaders('http://localhost:8000', account);
+    for (const eventType of ['REQUEST', 'DELIVERY', 'VALIDATION']) await apiJson('http://localhost:8000/events', { method: 'POST', headers: eventHeaders, body: JSON.stringify({ deal_id: id, actor: account.address, event_type: eventType, payload: { scenario: 'anchor' } }) });
     const verification = await apiJson(`http://localhost:8000/deals/${id}/verify`);
     const onchain = await createOnchainDeal(id);
     const anchor = await write('anchor_milestone', [onchain.id, 'delivery', verification.last_hash], 0n, 'anchor.anchor_milestone');

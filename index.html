@@ -44,7 +44,8 @@
     .btn:hover { border-color: var(--lime); background: var(--lime); } .btn.ghost { color: var(--body); background: transparent; border-color: var(--line); }
     .btn.busy { cursor: progress; } .btn.busy::after { content: ""; width: 12px; height: 12px; margin-left: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .wallet-msg { flex-basis: 100%; margin: 0; min-height: 1.2em; color: var(--amber); font: .72rem var(--mono); } #wallet-read[hidden] { display: none; }
+    .wallet-msg { flex-basis: 100%; margin: 0; min-height: 1.2em; color: var(--amber); font: .72rem var(--mono); } #wallet-read[hidden], #wallet-session[hidden] { display: none; }
+    .step .btn { align-self: flex-start; } .step .wallet-msg a, .tx-log a { color: var(--lime); } .tx-log { display: grid; gap: 8px; margin-top: 18px; } .tx-log a { font: .72rem var(--mono); overflow-wrap: anywhere; }
     .recorder { padding: 24px; border: 1px solid var(--line); background: linear-gradient(145deg, rgba(13,34,44,.94), rgba(5,14,20,.7)); box-shadow: 0 0 50px rgba(34,211,238,.08); }
     .panel-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 600 .68rem var(--mono); letter-spacing: .1em; }
     .rec { display: flex; align-items: center; gap: 7px; color: var(--red); } .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 14px var(--red); animation: blink 1.2s infinite; }
@@ -104,9 +105,9 @@
   </style>
 </head>
 <body>
-  <nav class="nav"><div class="wrap nav-inner"><a class="brand" href="#top"><img src="assets/logo-transparent.png" alt=""> FLIGHT RECORDER</a><button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button><ul class="nav-links" id="nav-links"><li><a href="#about">About</a></li><li><a href="#flow">Flow</a></li><li><a href="#proof">Proof</a></li><li><a href="#verify">Verify</a></li><li><a href="#scenario-matrix">Matrix</a></li><li><a href="#hashcheck">Try It</a></li><li><a href="#chainplay">Chain</a></li><li><a href="#watch">Watch</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#casefile">Case File</a></li><li><a href="#verdicts">Verdicts</a></li><li><a href="#quickstart">Quick Start</a></li><li><a href="#video">Video</a></li></ul></div></nav>
+  <nav class="nav"><div class="wrap nav-inner"><a class="brand" href="#top"><img src="assets/logo-transparent.png" alt=""> FLIGHT RECORDER</a><button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button><ul class="nav-links" id="nav-links"><li><a href="#about">About</a></li><li><a href="#flow">Flow</a></li><li><a href="#proof">Proof</a></li><li><a href="#verify">Verify</a></li><li><a href="#scenario-matrix">Matrix</a></li><li><a href="#hashcheck">Try It</a></li><li><a href="#try-dispute">Dispute</a></li><li><a href="#chainplay">Chain</a></li><li><a href="#watch">Watch</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#casefile">Case File</a></li><li><a href="#verdicts">Verdicts</a></li><li><a href="#quickstart">Quick Start</a></li><li><a href="#video">Video</a></li></ul></div></nav>
   <main id="top">
-    <section class="hero"><div class="wrap hero-grid"><div class="reveal"><div class="eyebrow">Agent Tank Hackathon / Onchain Justice</div><h1>FLIGHT<br>RECORDER</h1><p class="tagline">Tamper-evident evidence layer + on-chain AI settlement for agent-to-agent deals</p><div class="hero-mark"><img class="hero-logo" src="assets/logo.png" alt="Flight Recorder isometric mark"><img class="mochi" src="assets/mochi.png" alt="Mochi, the GenLayer mascot"></div><div class="actions"><a class="btn" href="https://github.com/hoveiser/flight-recorder">View on GitHub</a><button class="btn ghost" id="wallet-connect" type="button">Connect Wallet</button><span class="badge" id="wallet-read" hidden>reads OK</span><p class="wallet-msg" id="wallet-msg" role="status"></p><a class="btn ghost" href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D">Open Explorer</a><a class="btn lime" href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D" target="_blank" rel="noopener">Verify on Explorer</a><a class="btn ghost" href="#video">Watch demo</a></div></div><aside class="recorder reveal"><div class="panel-top"><span>RECORDER PANEL</span><span class="rec"><i class="rec-dot"></i> REC</span></div><div class="ticker" id="ticker">9f3a7c0d4e2b8a1f7c9e</div><div class="stat"><span>CHAIN</span><span>61997</span></div><div class="stat"><span>TESTS</span><span>34 PASSED</span></div><div class="stat"><span>LIVE SCENARIOS</span><span>4</span></div><div class="stat"><span>SDK</span><span>v0.19-rc2</span></div></aside></div></section>
+    <section class="hero"><div class="wrap hero-grid"><div class="reveal"><div class="eyebrow">Agent Tank Hackathon / Onchain Justice</div><h1>FLIGHT<br>RECORDER</h1><p class="tagline">Tamper-evident evidence layer + on-chain AI settlement for agent-to-agent deals</p><div class="hero-mark"><img class="hero-logo" src="assets/logo.png" alt="Flight Recorder isometric mark"><img class="mochi" src="assets/mochi.png" alt="Mochi, the GenLayer mascot"></div><div class="actions"><a class="btn" href="https://github.com/hoveiser/flight-recorder">View on GitHub</a><button class="btn ghost" id="wallet-connect" type="button">Connect Wallet</button><span class="badge" id="wallet-read" hidden>reads OK</span><span class="badge" id="wallet-session" hidden>Session active</span><p class="wallet-msg" id="wallet-msg" role="status"></p><a class="btn ghost" href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D">Open Explorer</a><a class="btn lime" href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D" target="_blank" rel="noopener">Verify on Explorer</a><a class="btn ghost" href="#video">Watch demo</a></div></div><aside class="recorder reveal"><div class="panel-top"><span>RECORDER PANEL</span><span class="rec"><i class="rec-dot"></i> REC</span></div><div class="ticker" id="ticker">9f3a7c0d4e2b8a1f7c9e</div><div class="stat"><span>CHAIN</span><span>61997</span></div><div class="stat"><span>TESTS</span><span>34 PASSED</span></div><div class="stat"><span>LIVE SCENARIOS</span><span>4</span></div><div class="stat"><span>SDK</span><span>v0.19-rc2</span></div></aside></div></section>
     <section id="about"><div class="wrap"><div class="section-head reveal"><span class="number">00 / ABOUT</span><div><h2>What is<br>this?</h2><p>The short version, before the evidence.</p></div></div><div class="about-copy reveal"><p>Flight Recorder is a black box for deals between AI agents. Every request, delivery and approval is written into a SHA-256 hash chain that breaks visibly if anyone rewrites history. When a deal goes wrong, that record becomes the evidence.</p><p>A settlement contract on GenLayer Studio Next then acts as judge and escrow: funds lock when the deal opens, the case-file hash anchors at dispute, AI validators fetch and check the evidence, and the winner is paid on-chain. No central arbiter.</p><p>Everything on this page is live. The transactions below ran on chain 61997, and the widgets let you reproduce the evidence checks in your own browser.</p><p class="caption">New here? Start with <a href="#hashcheck">TRY IT</a> — 30 seconds, no install.</p></div><div class="plain reveal"><h3>In plain words</h3><ul><li>Hash — a fingerprint of a file. Change one byte and the fingerprint changes completely.</li><li>Chain — each fingerprint includes the previous one, so editing history breaks every link after it.</li><li>Anchor — one fingerprint written on-chain, where nobody can edit it.</li><li>Escrow — the money locks in a contract, not in anyone's bank account.</li><li>Validators — independent AI judges that re-check the evidence themselves before anyone gets paid.</li></ul><svg viewBox="0 0 640 110" role="img" aria-label="Evidence becomes an on-chain anchor, then a verdict"><rect x="4" y="30" width="180" height="50" fill="none" stroke="#22d3ee"/><text x="94" y="52" text-anchor="middle" fill="#e5f1f0" font-family="'JetBrains Mono', monospace" font-size="13">EVIDENCE</text><text x="94" y="70" text-anchor="middle" fill="#718990" font-family="'JetBrains Mono', monospace" font-size="10">hash chain</text><line x1="184" y1="55" x2="236" y2="55" stroke="#22d3ee"/><polygon points="236,49 250,55 236,61" fill="#22d3ee"/><rect x="250" y="30" width="180" height="50" fill="none" stroke="#a3e635"/><text x="340" y="52" text-anchor="middle" fill="#e5f1f0" font-family="'JetBrains Mono', monospace" font-size="13">ANCHOR</text><text x="340" y="70" text-anchor="middle" fill="#718990" font-family="'JetBrains Mono', monospace" font-size="10">on-chain hash</text><line x1="430" y1="55" x2="482" y2="55" stroke="#a3e635"/><polygon points="482,49 496,55 482,61" fill="#a3e635"/><rect x="496" y="30" width="140" height="50" fill="none" stroke="#fbbf24"/><text x="566" y="52" text-anchor="middle" fill="#e5f1f0" font-family="'JetBrains Mono', monospace" font-size="13">VERDICT</text><text x="566" y="70" text-anchor="middle" fill="#718990" font-family="'JetBrains Mono', monospace" font-size="10">AI judges pay</text></svg></div></div></section>
     <section id="flow"><div class="wrap"><div class="section-head reveal"><span class="number">01 / FLOW</span><div><h2>From evidence<br>to outcome.</h2><p>Every transition is visible, deliberate, and anchored.</p></div></div><div class="pipeline reveal"><article class="node"><i class="node-dot"></i><h3>open_deal</h3><p>Escrow funded</p></article><article class="node"><i class="node-dot"></i><h3>record events</h3><p>Hash-chain witness</p></article><article class="node"><i class="node-dot"></i><h3>dispute</h3><p>Case file anchored</p></article><article class="node"><i class="node-dot"></i><h3>resolve</h3><p>AI validators decide</p></article><article class="node"><i class="node-dot"></i><h3>finalize</h3><p>Winner paid</p></article></div></div></section>
     <section id="proof"><div class="wrap"><div class="section-head reveal"><span class="number">02 / LIVE PROOF</span><div><h2>Real state.<br>Real chain.</h2><p>Inspect the deployed Settlement contract and its lifecycle transactions.</p></div></div><div class="proof-bar reveal"><span class="address" id="address">0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D</span><button class="copy-btn" data-copy="address">Copy address</button></div><div class="reveal"><div class="table-scroll"><table><thead><tr><th>METHOD</th><th>TX HASH</th><th>STATUS</th><th>EXPLORER</th></tr></thead><tbody><tr><td>open_deal</td><td class="hash">0x833a8910...a07260</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x833a8910198c84928b23c5cb756ffe906e920a0d3f139b87c5a9447006a07260">VIEW ↗</a></td></tr><tr><td>dispute</td><td class="hash">0x571095fb...5167758c</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x571095fb0b6eeeace5e1b7a7ad12d1c7a6f9cd997ef1fa3bb217e6a65167758c">VIEW ↗</a></td></tr><tr><td>resolve</td><td class="hash">0xd581386f...dba4de8</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0xd581386fc82c0fe07e760e5bb2ef0fa922b30892d36c4a5384855abaedba4de8">VIEW ↗</a></td></tr><tr><td>finalize</td><td class="hash">0x847ed870...e2b61c9</td><td><span class="badge">FINALIZED</span></td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x847ed870335849c9d3c04225239e18aa669ea4065b48a42dbfaf8d049e2b61c9">VIEW ↗</a></td></tr></tbody></table></div><p class="note">Every row is a real transaction on GenLayer Studio Next (chain 61997). Deal 4 completed the full lifecycle: dispute → AI resolve → APPROVED → finalize, paying the worker 0.1 GEN.</p></div></div></section>
@@ -125,6 +126,7 @@
     <section id="verdicts"><div class="wrap"><div class="section-head reveal"><span class="number">05 / VERDICTS</span><div style="display:flex;align-items:center;gap:24px"><h2>The record<br>gets a verdict.</h2><svg class="seal" viewBox="0 0 64 64" aria-label="Verdict seal"><circle cx="32" cy="32" r="27" fill="none" stroke="#22d3ee"/><circle cx="32" cy="32" r="21" fill="none" stroke="#718990" stroke-dasharray="2 4"/><path d="m21 32 7 7 16-17" fill="none" stroke="#a3e635" stroke-width="4"/><circle cx="49" cy="14" r="5" fill="#fb4b4b"/></svg></div></div><table class="verdicts reveal"><tbody><tr><td class="v-lime">APPROVED</td><td>Worker paid</td><td>Agreement fulfilled</td></tr><tr><td class="v-cyan">REFUNDED</td><td>Client refunded</td><td>Worker failed delivery</td></tr><tr><td class="v-red">EVIDENCE_MISMATCH</td><td>Client refunded</td><td>Tampered case file</td></tr><tr><td class="v-gray">UNRESOLVABLE</td><td>No payout</td><td>Too many failed attempts</td></tr><tr><td class="v-amber">TIMEOUT</td><td>Worker paid</td><td>No dispute filed</td></tr></tbody></table></div></section>
     <section id="quickstart"><div class="wrap"><div class="section-head reveal"><span class="number">06 / QUICK START</span><div><h2>Run the<br>recorder.</h2><p>Five commands from clone to on-chain verification.</p></div></div><div class="terminal reveal"><div class="terminal-top"><i></i><i></i><i></i></div><div class="command"><code>git clone https://github.com/hoveiser/flight-recorder.git &amp;&amp; cd flight-recorder</code><button class="copy-btn" data-command="git clone https://github.com/hoveiser/flight-recorder.git &amp;&amp; cd flight-recorder">Copy</button></div><div class="command"><code>pip install -r requirements.txt &amp;&amp; npm install</code><button class="copy-btn" data-command="pip install -r requirements.txt &amp;&amp; npm install">Copy</button></div><div class="command"><code>pytest tests/ -v</code><button class="copy-btn" data-command="pytest tests/ -v">Copy</button></div><div class="command"><code>uvicorn src.main:app</code><button class="copy-btn" data-command="uvicorn src.main:app">Copy</button></div><div class="command"><code>node scripts/e2e_demo.js</code><button class="copy-btn" data-command="node scripts/e2e_demo.js">Copy</button></div></div><p class="note">Verify on-chain: <a href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D">open the Studio Explorer contract page ↗</a></p></div></section>
     <section id="video"><div class="wrap"><div class="section-head reveal"><span class="number">07 / VIDEO</span><h2>See the flow<br>in motion.</h2></div><div class="video reveal"><a class="btn" href="https://x.com/hoveiser/status/2100591904383480156" target="_blank" rel="noopener">Watch on X</a><p class="note">Recorded against deployment v1; the transaction hashes visible in the video belong to v1 (see Deployment history in the README).</p></div></div></section>
+    <section id="try-dispute"><div class="wrap"><div class="section-head reveal"><span class="number">08 / TRY A DISPUTE</span><div><h2>Open, record,<br>dispute.</h2><p>Your connected wallet signs the writes. This page does not mint GEN.</p></div></div><div class="steps reveal"><article class="step"><span class="step-n">STEP 1</span><h3>Open a deal</h3><p>Locks 0.01 GEN escrow on the deployed Settlement contract.</p><button class="btn" id="open-deal" type="button">Open a deal</button><p class="wallet-msg" id="open-msg" role="status"></p></article><article class="step"><span class="step-n">STEP 2</span><h3>Record an event</h3><p>Appends one off-chain event with the session token.</p><button class="btn" id="record-event" type="button">Record an event</button><p class="wallet-msg" id="event-msg" role="status"></p></article><article class="step"><span class="step-n">STEP 3</span><h3>Dispute</h3><p>Anchors the case-file hash on-chain.</p><button class="btn" id="file-dispute" type="button">Dispute</button><p class="wallet-msg" id="dispute-msg" role="status"></p></article><article class="step"><span class="step-n">STEP 4</span><h3>Transaction hashes</h3><p>Explorer links for every write in this run.</p><div class="tx-log" id="tx-log"></div></article></div></div></section>
   </main>
   <footer><div class="wrap footer-row"><div><img src="assets/logo-transparent.png" alt=""> FLIGHT RECORDER</div><div><a href="https://github.com/hoveiser/flight-recorder">GitHub</a><a href="https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D">Explorer</a><a href="README.md">README</a></div><div>Built for Agent Tank Hackathon — Onchain Justice track. <a href="LICENSE">MIT License</a>.</div></div><div class="wrap gl-brand"><img src="assets/genlayer-logo.svg" alt="GenLayer logo" height="24"><img class="mochi" src="assets/mochi.png" alt="Mochi, the GenLayer mascot"><span>Built on GenLayer Studio Next</span><a href="https://genlayer.com" target="_blank" rel="noopener">genlayer.com ↗</a></div></footer>
   <script>
@@ -356,6 +358,7 @@
         await ensureStudioChain(ethereum);
         walletBtn.textContent = `${address.slice(0, 6)}...${address.slice(-4)}`;
         await readPayouts();
+        await startSession(ethereum, address);
       } catch (err) {
         walletBtn.textContent = 'Connect Wallet';
         walletMsg.textContent = walletError(err);
@@ -363,6 +366,154 @@
         walletBtn.disabled = false;
         walletBtn.classList.remove('busy');
       }
+    });
+
+    const walletSession = document.getElementById('wallet-session');
+    const API_BASE = location.port === '8000' ? '' : 'http://127.0.0.1:8000';
+    const WORKER = '0x1111111111111111111111111111111111111111';
+    const ESCROW = 10000000000000000n;
+    const FAUCET = 'https://faucet-studio-dev.genlayer.com/';
+    const DOD = { success_criteria: 'demo delivery' };
+    const flow = { externalId: null, onchainId: null };
+    function canonicalJson(obj) {
+      if (Array.isArray(obj)) return `[${obj.map(canonicalJson).join(',')}]`;
+      if (obj && typeof obj === 'object') {
+        return `{${Object.keys(obj).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(obj[key])}`).join(',')}}`;
+      }
+      return JSON.stringify(obj);
+    }
+    function faucetHtml() {
+      return `Please get test GEN from the Studio Next faucet <a href="${FAUCET}">${FAUCET}</a>`;
+    }
+    function showFaucet(el) { el.innerHTML = faucetHtml(); }
+    function needsFaucet(err) { return /insufficient|funds|balance|fee/i.test(err?.message || ''); }
+    async function startSession(ethereum, address) {
+      const nonceRes = await fetch(`${API_BASE}/api/auth/nonce`, { method: 'POST' });
+      if (!nonceRes.ok) throw new Error('Could not start session');
+      const { nonce } = await nonceRes.json();
+      const signature = await ethereum.request({ method: 'personal_sign', params: [nonce, address] });
+      const verify = await fetch(`${API_BASE}/api/auth/verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address, signature, nonce }),
+      });
+      if (!verify.ok) throw new Error('Session expired. Connect again.');
+      const body = await verify.json();
+      localStorage.setItem('fr.session', body.session_token);
+      walletSession.hidden = false;
+    }
+    async function walletClient() {
+      const { createClient } = await import('https://esm.sh/genlayer-js@2.0.0-rc.1');
+      const { studioDevnet } = await import('https://esm.sh/genlayer-js@2.0.0-rc.1/chains');
+      return createClient({ chain: studioDevnet, account: window.connectedAddress, provider: window.ethereum });
+    }
+    async function writeTx(functionName, args, value = 0n) {
+      const client = await walletClient();
+      const feeEstimate = await client.estimateTransactionFees();
+      const txHash = await client.writeContract({
+        address: SETTLEMENT,
+        functionName,
+        args,
+        value,
+        fees: {
+          distribution: feeEstimate.distribution,
+          messageAllocations: feeEstimate.messageAllocations,
+          feeValue: feeEstimate.feeValue,
+        },
+      });
+      return { client, txHash };
+    }
+    function logTx(label, hash) {
+      const log = document.getElementById('tx-log');
+      const link = document.createElement('a');
+      link.href = `https://explorer-studio-dev.genlayer.com/tx/${hash}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = `${label}: ${hash} VIEW ↗`;
+      log.appendChild(link);
+    }
+    async function lowBalance() {
+      const raw = await window.ethereum.request({ method: 'eth_getBalance', params: [window.connectedAddress, 'latest'] });
+      return BigInt(raw) < ESCROW;
+    }
+    function requireSession() {
+      if (!window.connectedAddress || !localStorage.getItem('fr.session')) {
+        throw new Error('Connect wallet to start a session.');
+      }
+    }
+    async function withStep(button, message, fn) {
+      message.textContent = '';
+      button.disabled = true;
+      button.classList.add('busy');
+      const label = button.textContent;
+      button.textContent = 'Working…';
+      try {
+        await fn();
+      } catch (err) {
+        if (needsFaucet(err)) showFaucet(message);
+        else if (err?.code === 4001) message.textContent = 'Wallet request rejected.';
+        else if (/session|401/i.test(err?.message || '')) message.textContent = 'Session expired. Connect again.';
+        else message.textContent = err?.message || 'Request failed.';
+      } finally {
+        button.disabled = false;
+        button.classList.remove('busy');
+        button.textContent = label;
+      }
+    }
+    document.getElementById('open-deal')?.addEventListener('click', () => {
+      const message = document.getElementById('open-msg');
+      withStep(document.getElementById('open-deal'), message, async () => {
+        requireSession();
+        if (await lowBalance()) { showFaucet(message); return; }
+        flow.externalId = `browser_${Date.now()}`;
+        const agreementHash = await sha256Hex(canonicalJson(DOD));
+        const { client, txHash } = await writeTx('open_deal', [flow.externalId, agreementHash, WORKER, 120], ESCROW);
+        logTx('open_deal', txHash);
+        message.textContent = 'Deal open submitted.';
+        for (let id = 1; id < 80; id += 1) {
+          const raw = await client.readContract({ address: SETTLEMENT, functionName: 'get_deal', args: [id] });
+          const deal = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {});
+          if (deal.external_deal_id === flow.externalId) { flow.onchainId = id; break; }
+        }
+      });
+    });
+    document.getElementById('record-event')?.addEventListener('click', () => {
+      const message = document.getElementById('event-msg');
+      withStep(document.getElementById('record-event'), message, async () => {
+        requireSession();
+        if (!flow.externalId) throw new Error('Open a deal first.');
+        const headers = { 'content-type': 'application/json', Authorization: `Bearer ${localStorage.getItem('fr.session')}` };
+        const created = await fetch(`${API_BASE}/deals`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ deal_id: flow.externalId, definition_of_done: DOD, parties: [window.connectedAddress, WORKER] }),
+        });
+        if (!created.ok && created.status !== 409) throw new Error('Could not open the off-chain deal.');
+        const recorded = await fetch(`${API_BASE}/events`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ deal_id: flow.externalId, actor: window.connectedAddress, event_type: 'DELIVERY', payload: { note: 'browser dispute' } }),
+        });
+        if (recorded.status === 401) throw new Error('Session expired. Connect again.');
+        if (!recorded.ok) throw new Error('Event was not recorded.');
+        message.textContent = 'Event recorded.';
+      });
+    });
+    document.getElementById('file-dispute')?.addEventListener('click', () => {
+      const message = document.getElementById('dispute-msg');
+      withStep(document.getElementById('file-dispute'), message, async () => {
+        requireSession();
+        if (!flow.onchainId) throw new Error('On-chain deal id is not ready yet.');
+        if (await lowBalance()) { showFaucet(message); return; }
+        const caseFileUrl = `${API_BASE}/deals/${flow.externalId}/case-file`;
+        const caseFile = await fetch(caseFileUrl);
+        if (!caseFile.ok) throw new Error('Case file is not ready.');
+        const body = await caseFile.text();
+        const caseHash = await sha256Hex(body);
+        const { txHash } = await writeTx('dispute', [flow.onchainId, caseFileUrl, caseHash]);
+        logTx('dispute', txHash);
+        message.textContent = 'Dispute submitted.';
+      });
     });
   </script>
 </body>

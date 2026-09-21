@@ -143,9 +143,18 @@ async function main() {
     // script does not start the API itself, and the case file it disputes is a
     // static GitHub URL rather than a live off-chain deal.
     try {
-        const sealResponse = await fetch(`${API_BASE}/deals/${OFFCHAIN_DEAL_ID}/seal`, {
+        const nonceRes = await fetch(`${API_BASE}/api/auth/nonce`, { method: 'POST' });
+        const { nonce } = await nonceRes.json();
+        const signature = await account.signMessage({ message: nonce });
+        const sessionRes = await fetch(`${API_BASE}/api/auth/verify`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ address: account.address, signature, nonce }),
+        });
+        const session = await sessionRes.json();
+        const sealResponse = await fetch(`${API_BASE}/deals/${OFFCHAIN_DEAL_ID}/seal`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', Authorization: `Bearer ${session.session_token}` },
             body: JSON.stringify({ actor: account.address }),
         });
         const sealResult = await sealResponse.json();
