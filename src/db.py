@@ -126,22 +126,29 @@ def seal_deal(deal_id: str) -> bool:
 
 def save_event(event: Event):
     conn = get_conn()
-    conn.execute(
-        "INSERT INTO events (deal_id, actor, event_type, payload, metadata, payload_hash, previous_event_hash, event_hash, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            event.deal_id,
-            event.actor,
-            event.event_type,
-            json.dumps(event.payload),
-            json.dumps(event.metadata),
-            event.payload_hash,
-            event.previous_event_hash,
-            event.event_hash,
-            event.timestamp.isoformat(),
-        ),
-    )
-    conn.commit()
-    conn.close()
+    conn.isolation_level = None
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "INSERT INTO events (deal_id, actor, event_type, payload, metadata, payload_hash, previous_event_hash, event_hash, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event.deal_id,
+                event.actor,
+                event.event_type,
+                json.dumps(event.payload),
+                json.dumps(event.metadata),
+                event.payload_hash,
+                event.previous_event_hash,
+                event.event_hash,
+                event.timestamp.isoformat(),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_last_event(deal_id: str) -> Optional[Event]:

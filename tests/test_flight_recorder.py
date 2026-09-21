@@ -1,4 +1,6 @@
 import json
+import threading
+
 from src import db
 
 
@@ -174,7 +176,7 @@ def test_seal_freeze_and_head_hash(client, deal):
     events = client.get(f"/deals/{deal_id}/events").json()
     expected_head = events[-1]["event_hash"]
 
-    resp = client.post(f"/deals/{deal_id}/seal")
+    resp = client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["sealed"] is True
@@ -183,7 +185,7 @@ def test_seal_freeze_and_head_hash(client, deal):
     assert client.get(f"/deals/{deal_id}").json()["sealed"] is True
 
     # Idempotent: sealing again returns the same frozen head.
-    again = client.post(f"/deals/{deal_id}/seal")
+    again = client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"})
     assert again.status_code == 200
     assert again.json()["chain_head"] == expected_head
 
@@ -209,7 +211,7 @@ def test_sealed_deal_chain_still_verifies(client, deal):
         )
         assert resp.status_code == 200
 
-    assert client.post(f"/deals/{deal_id}/seal").status_code == 200
+    assert client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"}).status_code == 200
 
     # Sealing freezes writes; it must not break verification or case-file export.
     resp = client.get(f"/deals/{deal_id}/verify")
@@ -222,3 +224,47 @@ def test_sealed_deal_chain_still_verifies(client, deal):
     case = resp.json()
     assert case["chain_integrity"]["verification"] == "PASS"
     assert len(case["events"]) == 3
+
+
+def test_concurrent_writes_cannot_fork_chain(client, deal):
+    deal_id = deal["deal_id"]
+    n = 8
+    barrier = threading.Barrier(n)
+    errors = []
+
+    def post(i):
+        barrier.wait()
+        resp = client.post(
+            "/events",
+            json={
+                "deal_id": deal_id,
+                "actor": "agentA",
+                "event_type": "REQUEST",
+                "payload": {"i": i, "unique": f"payload-{i}"},
+            },
+        )
+        if resp.status_code != 200:
+            errors.append((i, resp.status_code, resp.text))
+
+    threads = [threading.Thread(target=post, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    events = client.get(f"/deals/{deal_id}/events").json()
+    assert len(events) == n
+    body = client.get(f"/deals/{deal_id}/verify").json()
+    assert body["verification"] == "PASS"
+    assert body["events"] == n
+
+    ids = [ev["id"] for ev in events]
+    assert len(ids) == len(set(ids))
+    prevs = [ev["previous_event_hash"] for ev in events]
+    assert len(prevs) == len(set(prevs))
+    hashes = [ev["event_hash"] for ev in events]
+    assert events[0]["previous_event_hash"] == "GENESIS"
+    for i, ev in enumerate(events[1:], start=1):
+        assert ev["previous_event_hash"] == events[i - 1]["event_hash"]
+    assert hashes[-1] not in prevs

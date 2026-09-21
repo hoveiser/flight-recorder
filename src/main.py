@@ -1,6 +1,10 @@
-from fastapi import FastAPI, HTTPException
+import threading
+from typing import Optional
+
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
+from pydantic import BaseModel
 from . import db
 from .models import EventCreate, Event, DealCreate, Deal, DisputeCreate, Dispute
 from .hash_chain import (
@@ -13,6 +17,22 @@ from .hash_chain import (
 app = FastAPI(title="Flight Recorder", version="0.2.0")
 
 db.init_db()
+
+_deal_write_locks: dict[str, threading.Lock] = {}
+_deal_write_locks_guard = threading.Lock()
+
+
+def _deal_write_lock(deal_id: str) -> threading.Lock:
+    with _deal_write_locks_guard:
+        lock = _deal_write_locks.get(deal_id)
+        if lock is None:
+            lock = threading.Lock()
+            _deal_write_locks[deal_id] = lock
+        return lock
+
+
+class SealBody(BaseModel):
+    actor: Optional[str] = None
 
 
 @app.post("/deals", response_model=Deal)
@@ -40,44 +60,45 @@ def get_deal(deal_id: str):
 
 @app.post("/events", response_model=Event)
 def record_event(event_in: EventCreate):
-    deal = db.get_deal(event_in.deal_id)
-    if deal is None:
-        raise HTTPException(404, "Deal not found")
-    if deal.sealed:
-        # The case file that was anchored on-chain must stay byte-identical to
-        # the one validators fetch, so the log freezes at dispute time. Without
-        # this, a party could append favourable events after anchoring and make
-        # the on-chain hash describe a record that no longer exists off-chain.
-        raise HTTPException(409, "Evidence log sealed after dispute")
+    with _deal_write_lock(event_in.deal_id):
+        deal = db.get_deal(event_in.deal_id)
+        if deal is None:
+            raise HTTPException(404, "Deal not found")
+        if deal.sealed:
+            # The case file that was anchored on-chain must stay byte-identical to
+            # the one validators fetch, so the log freezes at dispute time. Without
+            # this, a party could append favourable events after anchoring and make
+            # the on-chain hash describe a record that no longer exists off-chain.
+            raise HTTPException(409, "Evidence log sealed after dispute")
 
-    last = db.get_last_event(event_in.deal_id)
-    previous_hash = last.event_hash if last else GENESIS
+        last = db.get_last_event(event_in.deal_id)
+        previous_hash = last.event_hash if last else GENESIS
 
-    payload_hash = compute_payload_hash(event_in.payload)
-    timestamp = datetime.now(timezone.utc)
-    event_hash = compute_event_hash(
-        deal_id=event_in.deal_id,
-        actor=event_in.actor,
-        event_type=event_in.event_type,
-        payload_hash=payload_hash,
-        previous_event_hash=previous_hash,
-        timestamp=timestamp.isoformat(),
-    )
+        payload_hash = compute_payload_hash(event_in.payload)
+        timestamp = datetime.now(timezone.utc)
+        event_hash = compute_event_hash(
+            deal_id=event_in.deal_id,
+            actor=event_in.actor,
+            event_type=event_in.event_type,
+            payload_hash=payload_hash,
+            previous_event_hash=previous_hash,
+            timestamp=timestamp.isoformat(),
+        )
 
-    event = Event(
-        id=0,
-        deal_id=event_in.deal_id,
-        actor=event_in.actor,
-        event_type=event_in.event_type,
-        payload=event_in.payload,
-        metadata=event_in.metadata,
-        payload_hash=payload_hash,
-        previous_event_hash=previous_hash,
-        event_hash=event_hash,
-        timestamp=timestamp,
-    )
-    db.save_event(event)
-    return event
+        event = Event(
+            id=0,
+            deal_id=event_in.deal_id,
+            actor=event_in.actor,
+            event_type=event_in.event_type,
+            payload=event_in.payload,
+            metadata=event_in.metadata,
+            payload_hash=payload_hash,
+            previous_event_hash=previous_hash,
+            event_hash=event_hash,
+            timestamp=timestamp,
+        )
+        db.save_event(event)
+        return event
 
 
 @app.get("/deals/{deal_id}/events", response_model=list[Event])
@@ -88,7 +109,11 @@ def get_events(deal_id: str):
 
 
 @app.post("/deals/{deal_id}/seal")
-def seal_deal(deal_id: str):
+def seal_deal(
+    deal_id: str,
+    body: Optional[SealBody] = None,
+    x_actor: Optional[str] = Header(default=None, alias="X-Actor"),
+):
     """Freeze the evidence log and return the head hash that must be anchored.
 
     Idempotent: sealing an already-sealed deal succeeds and returns the same
@@ -98,6 +123,13 @@ def seal_deal(deal_id: str):
     deal = db.get_deal(deal_id)
     if deal is None:
         raise HTTPException(404, "Deal not found")
+
+    actor = (body.actor if body is not None else None) or x_actor
+    if not actor or actor not in deal.parties:
+        raise HTTPException(
+            403,
+            "Only a deal party (client or worker) may seal the evidence log",
+        )
 
     db.seal_deal(deal_id)
     last = db.get_last_event(deal_id)

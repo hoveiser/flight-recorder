@@ -143,7 +143,11 @@ async function main() {
     // script does not start the API itself, and the case file it disputes is a
     // static GitHub URL rather than a live off-chain deal.
     try {
-        const sealResponse = await fetch(`${API_BASE}/deals/${OFFCHAIN_DEAL_ID}/seal`, { method: 'POST' });
+        const sealResponse = await fetch(`${API_BASE}/deals/${OFFCHAIN_DEAL_ID}/seal`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ actor: account.address }),
+        });
         const sealResult = await sealResponse.json();
         console.log('[dispute] evidence log sealed, chain_head:', sealResult.chain_head);
     } catch (error) {
