@@ -74,7 +74,7 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
-Expected: **32 passed** (11 off-chain + 21 direct-mode).
+Expected: **34 passed** (13 off-chain + 21 direct-mode).
 
 ## On-Chain Settlement (Studio Next)
 
@@ -100,7 +100,7 @@ Run the direct Settlement tests:
 | **v2** | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Current on-chain deployment. Carries the live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output. |
 | **v3** | repo HEAD (not redeployed) | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
 
-**Current status:** v3 contract code is merged to main and covered by direct-mode tests (32 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap.
+**Current status:** v3 contract code is merged to main and covered by direct-mode tests (34 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap.
 
 ## Versioning
 
@@ -231,12 +231,21 @@ sealing is never a step anyone has to remember.
     ├── contracts/
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
-    │   ├── test_flight_recorder.py  # Off-chain tests (11 tests)
+    │   ├── test_flight_recorder.py  # Off-chain tests (13 tests)
     │   └── direct/test_settlement.py # Direct-mode tests (21 tests)
     ├── demo/
     │   ├── scraper_dispute.py
     │   └── code_quality_dispute.py
     └── README.md
+
+## Threat model & known limitations
+- Unsigned events: the hash chain proves integrity (no later edit), not provenance (who wrote it). A party controlling the logging service could fabricate a consistent log. Mitigation today: the case-file hash is anchored on-chain at dispute and validators re-fetch the served bytes; signed events are on the v4 roadmap.
+- Omission: the chain cannot prove an event was NOT skipped. anchor_milestone pins the chain head; periodic auto-anchoring is on the roadmap.
+- Concurrency: POST /events is serialized per deal (threading lock + BEGIN IMMEDIATE), so concurrent writes cannot fork the chain; regression-tested by test_concurrent_writes_cannot_fork_chain.
+- Seal access: POST /deals/{id}/seal requires a deal-party actor (body field or X-Actor); strangers cannot freeze an opponent's log.
+- Prompt injection: validators receive evidence inside data tags with instructions to ignore embedded commands; adversarial case files are regression-tested by test_prompt_injection_does_not_change_verdict.
+- Timestamps are service-claimed until anchored; on-chain anchoring provides authoritative order.
+- Live on-chain instance is v2; v3/v4 contract code is merged and direct-mode tested, redeploy scheduled (see Versioning and Deployment history).
 
 ## Roadmap & open questions
 

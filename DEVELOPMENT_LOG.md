@@ -1,5 +1,12 @@
 # Flight Recorder — Development Log
 
+### Day 11 (Sep 21) — Review hardening round 2 (harden-v4)
+- Per-deal threading lock + BEGIN IMMEDIATE around the event write path (closes the chain-fork race vector)
+- POST /deals/{id}/seal now party-restricted (actor body field or X-Actor, else 403)
+- New tests: test_concurrent_writes_cannot_fork_chain, test_prompt_injection_does_not_change_verdict
+- Suite: 34 passed (13 off-chain + 21 direct-mode)
+- README: Threat model & known limitations section added; counts synced to 34
+
 ## Day 1 (Sep 6) — Foundation + Evidence Core ✅
 
 **Goal:** Working tamper-evident evidence service with green CI.
