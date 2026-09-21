@@ -83,7 +83,7 @@ async function runHappy() {
   // the case-file hash is anchored. Best effort: the happy-path case file is a
   // static URL, so a missing local API is not fatal here.
   let sealed = null;
-  try { sealed = await sealOffchain('http://localhost:8000', HAPPY_OFFCHAIN_DEAL_ID); } catch (error) { console.error(`[happy] seal skipped: ${String(error.message || error)}`); }
+  try { sealed = await sealOffchain('http://localhost:8000', HAPPY_OFFCHAIN_DEAL_ID, account.address); } catch (error) { console.error(`[happy] seal skipped: ${String(error.message || error)}`); }
   const dispute = await write('dispute', [id, HAPPY_URL, HAPPY_HASH], 0n, 'happy.dispute');
   const resolve = await write('resolve', [id], 0n, 'happy.resolve');
   let deal = await readDeal(id);
@@ -98,8 +98,12 @@ async function apiJson(url, options) { const response = await fetch(url, options
 // the bytes hashed at dispute time, so sealing first is what makes the anchored
 // hash describe a record that can never grow afterwards. Kept in the same script
 // as the dispute transaction so the two cannot drift apart.
-async function sealOffchain(apiBase, dealId) {
-  const sealed = await apiJson(`${apiBase}/deals/${dealId}/seal`, { method: 'POST' });
+async function sealOffchain(apiBase, dealId, actor) {
+  const sealed = await apiJson(`${apiBase}/deals/${dealId}/seal`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ actor }),
+  });
   console.log(`[${dealId}] evidence log sealed, chain_head=${sealed.chain_head}`);
   return sealed.chain_head;
 }
