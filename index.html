@@ -69,6 +69,7 @@
     .step-dot.active{border-color:var(--cyan);color:var(--cyan)}
     .step-dot.done{border-color:var(--lime);color:var(--lime)}
     .btn.lime { color: var(--lime); border-color: var(--lime); background: transparent; } .btn.lime:hover { color: var(--bg); background: var(--lime); }
+    .btn.ghost.connected { color: var(--lime); border-color: var(--lime); }
     .verify-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } .verify-grid .card { display: flex; flex-direction: column; gap: 12px; min-width: 0; } .verify-grid .card .actions { margin-top: auto; } .verify-grid .command { padding: 9px 0; }
     .panel-box { padding: 25px; border: 1px solid var(--line); background: var(--panel); }
     .hash-out { margin-top: 18px; padding: 14px; border: 1px solid var(--line); background: #061017; color: var(--cyan); font: .72rem var(--mono); overflow-wrap: anywhere; } .hash-out .label { color: var(--muted); }
@@ -297,10 +298,11 @@
     const walletBtn = document.getElementById('wallet-connect');
     const walletMsg = document.getElementById('wallet-msg');
     const walletRead = document.getElementById('wallet-read');
-    const STUDIO_CHAIN_ID = '0xF24D';
+
+    const STUDIO_CHAIN_ID = '0xF22D';
     const SETTLEMENT = '0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D';
     const STUDIO_CHAIN = {
-      chainId: '0xF24D',
+      chainId: '0xF22D',
       chainName: 'GenLayer Studio Next',
       rpcUrls: ['https://studio-dev.genlayer.com/api'],
       nativeCurrency: { name: 'GEN', symbol: 'GEN', decimals: 18 },
@@ -338,6 +340,30 @@
       walletRead.hidden = false;
       walletRead.textContent = 'reads OK';
     }
+    // Connecting the wallet and reading from the contract are two separate
+    // things that can fail independently. Keeping them in one try/catch used
+    // to make a successful connection look like a failure whenever the read
+    // step hiccuped (CORS, a slow RPC, etc). Now a read failure only clears
+    // the "reads OK" badge and leaves a note — it never un-connects the wallet.
+    function setConnectedUI(address) {
+      walletBtn.textContent = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      walletBtn.classList.add('connected');
+    }
+    function setDisconnectedUI() {
+      walletBtn.textContent = 'Connect Wallet';
+      walletBtn.classList.remove('connected');
+      walletRead.hidden = true;
+      window.connectedAddress = null;
+      localStorage.removeItem('fr.wallet');
+    }
+    async function tryReadPayouts() {
+      try {
+        await readPayouts();
+      } catch (err) {
+        walletRead.hidden = true;
+        walletMsg.textContent = 'Connected, but reading the contract failed: ' + walletError(err);
+      }
+    }
     walletBtn?.addEventListener('click', async () => {
       walletMsg.textContent = '';
       walletRead.hidden = true;
@@ -353,14 +379,17 @@
         const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
         const address = accounts?.[0];
         if (!address) throw new Error('No account returned');
+        await ensureStudioChain(ethereum);
         window.connectedAddress = address;
         localStorage.setItem('fr.wallet', address);
         await ensureStudioChain(ethereum);
         walletBtn.textContent = `${address.slice(0, 6)}...${address.slice(-4)}`;
         await readPayouts();
         await startSession(ethereum, address);
+        setConnectedUI(address);
+        await tryReadPayouts();
       } catch (err) {
-        walletBtn.textContent = 'Connect Wallet';
+        setDisconnectedUI();
         walletMsg.textContent = walletError(err);
       } finally {
         walletBtn.disabled = false;
@@ -515,6 +544,49 @@
         message.textContent = 'Dispute submitted.';
       });
     });
+    // Restore the connected look on reload instead of always starting back
+    // at "Connect Wallet" — the wallet remembers the approval, so the page
+    // should too. This only restores the label; it re-verifies with the
+    // wallet and re-runs the read rather than trusting localStorage alone.
+    (async () => {
+      const saved = localStorage.getItem('fr.wallet');
+      const ethereum = window.ethereum;
+      if (!saved || !ethereum) return;
+      try {
+        const accounts = await ethereum.request({ method: 'eth_accounts' });
+        const address = accounts?.[0];
+        if (!address || address.toLowerCase() !== saved.toLowerCase()) {
+          localStorage.removeItem('fr.wallet');
+          return;
+        }
+        const chainId = await ethereum.request({ method: 'eth_chainId' });
+        if (String(chainId).toLowerCase() !== STUDIO_CHAIN_ID.toLowerCase()) {
+          localStorage.removeItem('fr.wallet');
+          return;
+        }
+        window.connectedAddress = address;
+        setConnectedUI(address);
+        await tryReadPayouts();
+      } catch (err) {
+        localStorage.removeItem('fr.wallet');
+      }
+    })();
+    // Keep the UI honest if the account or network changes underneath it.
+    if (window.ethereum?.on) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (!accounts?.length) {
+          setDisconnectedUI();
+          walletMsg.textContent = 'Wallet disconnected.';
+        } else {
+          setDisconnectedUI();
+          walletMsg.textContent = 'Account changed — click Connect Wallet again.';
+        }
+      });
+      window.ethereum.on('chainChanged', () => {
+        setDisconnectedUI();
+        walletMsg.textContent = 'Network changed — click Connect Wallet again.';
+      });
+    }
   </script>
 </body>
 </html>
