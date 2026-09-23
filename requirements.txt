@@ -4,3 +4,4 @@ pydantic
 pytest
 httpx
 genlayer-test==0.30.0rc2
+eth-account
