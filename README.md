@@ -76,6 +76,15 @@ API docs: http://localhost:8000/docs
 
 Expected: **34 passed** (12 off-chain + 22 direct-mode).
 
+### 3. Run Demos
+
+With the off-chain service from step 1 still running:
+
+    python demo/scraper_dispute.py
+    python demo/code_quality_dispute.py
+
+Each script records a full deal lifecycle (events → seal → verify) against the local API.
+
 ## On-Chain Settlement (Studio Next)
 
 The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
@@ -106,10 +115,6 @@ Run the direct Settlement tests:
 
 On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, live). Code generations are numbered v3 (merged, not redeployed), v4 (hardening + first roadmap items), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
 
-### 3. Run Demos
-
-    python demo/scraper_dispute.py
-    python demo/code_quality_dispute.py
 
 ## API Reference
 
@@ -239,7 +244,7 @@ sealing is never a step anyone has to remember.
     └── README.md
 
 ## Threat model & known limitations
-- Unsigned events: the hash chain proves integrity (no later edit), not provenance (who wrote it). A party controlling the logging service could fabricate a consistent log. Mitigation today: the case-file hash is anchored on-chain at dispute and validators re-fetch the served bytes; signed events are on the v4 roadmap.
+- Unsigned events: the hash chain proves integrity (no later edit), not provenance (who wrote it). A party controlling the logging service could fabricate a consistent log. Mitigation today: writes require a wallet-signed session, and the case-file hash is anchored on-chain at dispute and validators re-fetch the served bytes; per-event signatures remain on the roadmap.
 - Omission: the chain cannot prove an event was NOT skipped. anchor_milestone pins the chain head; periodic auto-anchoring is on the roadmap.
 - Concurrency: POST /events is serialized per deal (threading lock + BEGIN IMMEDIATE), so concurrent writes cannot fork the chain; regression-tested by test_concurrent_writes_cannot_fork_chain.
 - Seal access: POST /deals/{id}/seal requires a deal-party actor (body field or X-Actor); strangers cannot freeze an opponent's log.
@@ -255,12 +260,11 @@ Known gaps, stated plainly rather than discovered later:
   missing-evidence case files with their expected verdicts, and execute them in
   direct mode so the equivalence principle is measured against cases where the
   right answer is genuinely contested, not only the clear-cut ones.
-- **Signature-based actor authentication for `/events`.** Event writes are currently
-  trust-based (MVP): the caller asserts an `actor` string. Signing events with the
-  actor's key would make attribution verifiable rather than claimed.
-- **Per-deal write locking or `BEGIN IMMEDIATE` transactions.** The hash chain has a
-  concurrency race: two simultaneous `/events` calls for the same deal can both read
-  the same previous hash and fork the chain. Serializing writes per deal removes it.
+- **Actor attribution is session-verified (wallet-signed login since v5); per-event
+  cryptographic signatures remain on the roadmap.** `POST /events` and `/seal`
+  require a session token, so a caller proves control of an address before writing.
+  The event body itself is still unsigned, so a replayed session could post under
+  that address; signing each payload with the actor's key closes the gap.
 - **Appeal with new evidence.** Today `appeal` re-runs consensus over the *same*
   anchored case file, so it can only produce a different verdict by chance. A real
   appeal would accept a new case-file hash and re-anchor it.
@@ -268,8 +272,13 @@ Known gaps, stated plainly rather than discovered later:
   v3, so the hardening (agreement/anchor verification, fail-closed timeout, exception
   retry) is proven by the direct-mode suite but not yet by on-chain execution.
   Deliberately deferred to post-hackathon so the live evidence stays continuous.
-- **Browser-executed dispute flow.** Wallet connect, Studio Next chain switch,
-  integrated faucet, and in-browser open_deal/dispute/resolve/finalize.
+- **Hosted evidence API.** The off-chain recorder must run locally
+  (`uvicorn src.main:app`) for the Try-a-Dispute flow to record events. A hosted
+  instance would let visitors complete the whole lifecycle without cloning the repo.
+- **Integrated faucet.** Visitors currently fund their own test transactions from the
+  Studio Next faucet, which is why every on-chain row is a real independently
+  verifiable run. Wiring a faucet into the page would lower the barrier for judges
+  without changing that property.
 
 ## Tech Stack
 
