@@ -74,7 +74,7 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
-Expected: **34 passed** (13 off-chain + 21 direct-mode).
+Expected: **34 passed** (12 off-chain + 22 direct-mode).
 
 ## On-Chain Settlement (Studio Next)
 
