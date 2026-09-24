@@ -118,7 +118,7 @@
     <section id="scenario-matrix"><div class="wrap"><div class="section-head reveal"><span class="number">02B / SCENARIO MATRIX</span><div><h2>Four runs.<br>One record.</h2><p>Live outcomes from the deployed Settlement contract.</p></div></div><div class="reveal"><div class="table-scroll"><table><thead><tr><th>SCENARIO</th><th>VERDICT / OUTCOME</th><th>PAYOUT TO</th><th>KEY TX</th></tr></thead><tbody><tr><td>0 / HAPPY PATH — AI RESOLVE</td><td>APPROVED / released</td><td>Worker (0.1 GEN)</td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x847ed870335849c9d3c04225239e18aa669ea4065b48a42dbfaf8d049e2b61c9">0x847ed870... VIEW ↗</a></td></tr><tr><td>1 / OFF-CHAIN ANCHOR</td><td>Chain anchor verified on-chain</td><td>None</td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x6d87f4edb69d24e05367163de8a9dc83d7f3dc15fa630d281d63b6e6a7cc1cd5">0x6d87f4ed... VIEW ↗</a></td></tr><tr><td>2 / TIMEOUT RELEASE</td><td>Early release correctly rejected — 7-day escrow lock enforced</td><td>None</td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x19ca7d54d49cc5c75435e5d9fd9f4e1d9f9d60521a082a0e36a966efdb70e13d">0x19ca7d54... VIEW ↗</a></td></tr><tr><td>3 / EVIDENCE HASH MISMATCH</td><td>MISMATCH / refunded</td><td>Client</td><td><a href="https://explorer-studio-dev.genlayer.com/tx/0x535b7200c4565845abdb8ae1caf59c03390abc860536be4545075d88c1e33ac9">0x535b7200... VIEW ↗</a></td></tr></tbody></table></div></div><p class="note">Row 3 / EVIDENCE HASH MISMATCH anchors a deliberately wrong case-file hash: validators re-fetch the served evidence, re-hash it during the consensus round, detect the mismatch, and refund the client — the tamper path, demonstrated live. Exact hashes and validator reasoning: scripts/e2e_results.md. The 7-day timeout lock is a deployment parameter chosen for escrow realism; per-deal configurable timeouts are on the v4 roadmap.</p></div></section>
     <section id="hashcheck"><div class="wrap"><div class="section-head reveal"><span class="number">02C / TRY IT</span><div><h2>Reproduce the<br>on-chain hash.</h2><p>Fetch the case file, hash it in your browser, compare with what is anchored on-chain.</p></div></div><div class="panel-box reveal"><div class="stepper" id="hashcheck-steps"><span class="step-dot" data-step="1">1 Fetch</span><span class="step-dot" data-step="2">2 Hash</span><span class="step-dot" data-step="3">3 Compare</span></div><div class="actions"><button class="btn" id="hashcheck-run" type="button">Fetch case file and verify</button><label class="toggle"><input type="checkbox" id="hashcheck-tamper"> Tamper one byte before hashing</label></div><div class="hash-out" id="hashcheck-out" role="status" aria-live="polite"><span class="label">Computed SHA-256:</span> <span id="hashcheck-hash">—</span><div id="hashcheck-result" style="margin-top:10px"></div></div><p class="note" id="hashcheck-caption">This hash is anchored on-chain in deal 4 (dispute tx 0x571095fb...). You just reproduced it in your own browser.</p></div></div></section>
     <section id="chainplay"><div class="wrap"><div class="section-head reveal"><span class="number">02D / TAMPER DETECTION</span><div><h2>Break the<br>chain.</h2><p>Edit any payload and watch every later hash change. This is exactly what /verify detects off-chain.</p></div></div><div class="panel-box reveal"><div class="chain-blocks" id="chain-blocks"></div><div class="actions"><button class="btn" id="chain-tamper" type="button">Tamper event 2</button><button class="btn ghost" id="chain-reset" type="button">Reset</button></div><p class="note">Chain rule: hash_i = SHA256(payload_i + previous_hash), genesis = 64 zeros.</p></div></div></section>
-    <section id="watch"><div class="wrap"><div class="section-head reveal"><span class="number">02E / WATCH A REAL DISPUTE</span><div><h2>The whole path,<br>one screen.</h2><p>The widgets above prove the evidence layer. This panel shows the execution layer: a real dispute lifecycle that ran on Studio Next, step by step, with the exact transactions and the commands to reproduce it.</p></div></div><div class="steps reveal"><article class="step"><span class="step-n">STEP 1</span><h3>open_deal</h3><p>Escrow funded, agreement hash locked.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x833a8910198c84928b23c5cb756ffe906e920a0d3f139b87c5a9447006a07260" target="_blank" rel="noopener">0x833a8910...a07260 VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 2</span><h3>record events</h3><p>Off-chain hash chain grows — the widgets above verify it. No gas, no on-chain tx.</p></article><article class="step"><span class="step-n">STEP 3</span><h3>dispute</h3><p>Case-file hash anchored on-chain.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x571095fb0b6eeeace5e1b7a7ad12d1c7a6f9cd997ef1fa3bb217e6a65167758c" target="_blank" rel="noopener">0x571095fb...5167758c VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 4</span><h3>resolve</h3><p>Validators fetch the case file, verify integrity, verdict APPROVED.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0xd581386fc82c0fe07e760e5bb2ef0fa922b30892d36c4a5384855abaedba4de8" target="_blank" rel="noopener">0xd581386f...dba4de8 VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 5</span><h3>finalize</h3><p>Winner paid on-chain, payout visible in <code>get_payouts</code>.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x847ed870335849c9d3c04225239e18aa669ea4065b48a42dbfaf8d049e2b61c9" target="_blank" rel="noopener">0x847ed870...e2b61c VIEW &#8599;</a><span class="badge">FINALIZED</span></article></div><div class="callout reveal"><h3>Why is there no Run-it-now button here?</h3><p>Executing a dispute needs a funded Studio Next account and a private key. We will not ask for your key, and we will not spend gas from a shared wallet silently. Instead, one command reproduces the entire lifecycle with your own account: <code>node scripts/e2e_demo.js</code> — or call the methods yourself on contract <code>0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D</code> in Studio Next. Every run shown above is public and verifiable.</p><p>Browser-executed disputes are live: <a href="#try-dispute">TRY A DISPUTE</a> connects your wallet and signs open_deal / dispute on-chain from your browser. Off-chain event recording needs the local API (<code>uvicorn src.main:app</code>); an integrated faucet stays on the roadmap.</p></div></div></section>
+    <section id="watch"><div class="wrap"><div class="section-head reveal"><span class="number">02E / WATCH A REAL DISPUTE</span><div><h2>The whole path,<br>one screen.</h2><p>The widgets above prove the evidence layer. This panel shows the execution layer: a real dispute lifecycle that ran on Studio Next, step by step, with the exact transactions and the commands to reproduce it.</p></div></div><div class="steps reveal"><article class="step"><span class="step-n">STEP 1</span><h3>open_deal</h3><p>Escrow funded, agreement hash locked.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x833a8910198c84928b23c5cb756ffe906e920a0d3f139b87c5a9447006a07260" target="_blank" rel="noopener">0x833a8910...a07260 VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 2</span><h3>record events</h3><p>Off-chain hash chain grows — the widgets above verify it. No gas, no on-chain tx.</p></article><article class="step"><span class="step-n">STEP 3</span><h3>dispute</h3><p>Case-file hash anchored on-chain.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x571095fb0b6eeeace5e1b7a7ad12d1c7a6f9cd997ef1fa3bb217e6a65167758c" target="_blank" rel="noopener">0x571095fb...5167758c VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 4</span><h3>resolve</h3><p>Validators fetch the case file, verify integrity, verdict APPROVED.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0xd581386fc82c0fe07e760e5bb2ef0fa922b30892d36c4a5384855abaedba4de8" target="_blank" rel="noopener">0xd581386f...dba4de8 VIEW &#8599;</a><span class="badge">FINALIZED</span></article><article class="step"><span class="step-n">STEP 5</span><h3>finalize</h3><p>Winner paid on-chain, payout visible in <code>get_payouts</code>.</p><a class="hash" href="https://explorer-studio-dev.genlayer.com/tx/0x847ed870335849c9d3c04225239e18aa669ea4065b48a42dbfaf8d049e2b61c9" target="_blank" rel="noopener">0x847ed870...e2b61c VIEW &#8599;</a><span class="badge">FINALIZED</span></article></div><div class="callout reveal"><h3>Why is there no Run-it-now button here?</h3><p>Executing a dispute needs a funded Studio Next account and a private key. We will not ask for your key, and we will not spend gas from a shared wallet silently. Instead, one command reproduces the entire lifecycle with your own account: <code>node scripts/e2e_demo.js</code> — or call the methods yourself on contract <code>0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D</code> in Studio Next. Every run shown above is public and verifiable.</p><p>Browser-executed disputes are live in section 08: <a href="#try-dispute">TRY A DISPUTE</a> connects your wallet and signs open_deal / dispute on-chain from your browser, and off-chain event recording is served by the hosted evidence API. An integrated faucet remains on the roadmap.</p></div></div></section>
     <section id="architecture"><div class="wrap"><div class="section-head reveal"><span class="number">03 / ARCHITECTURE</span><div><h2>Witness meets<br>judge.</h2><p>Evidence stays inspectable. Consensus stays distributed.</p></div></div><div class="two-panel"><article class="card reveal"><div class="kicker">Off-chain / witness</div><div class="hash-chain"><span class="hash-block">a91f...c20d</span><i class="hash-line"></i><span class="hash-block">7b3e...19aa</span><i class="hash-line"></i><span class="hash-block broken">BROKEN<br>c8ff...4401</span><i class="hash-line"></i><span class="hash-block">91d2...08be</span></div><p class="caption">Append-only SQLite log. Any modification breaks the chain.</p></article><article class="card reveal"><div class="kicker">On-chain / judge</div><div class="consensus"><div class="leader">LEADER<br><span style="color:var(--lime)">PROPOSES</span></div><div class="validators"><span class="validator">VALIDATOR 01 / AGREE</span><span class="validator">VALIDATOR 02 / AGREE</span><span class="validator">VALIDATOR 03 / AGREE</span></div></div><p class="caption">Equivalence-principle consensus. No single party controls the verdict.</p></article></div></div></section>
     <section id="casefile"><div class="wrap"><div class="section-head reveal"><span class="number">04 / CASE FILE</span><div><h2>Evidence,<br>serialized.</h2><p>The case file carries the record from the witness layer to the judge.</p></div></div><pre class="case-file reveal"><span class="json-punc">{</span>
   <span class="json-key">"deal_id"</span><span class="json-punc">: </span><span class="json-string">"scraper_deal_001"</span><span class="json-punc">,</span>
@@ -396,7 +396,16 @@
       while (Date.now() - started < timeoutMs) {
         const tx = await client.getTransaction({ hash });
         const status = String(tx.statusName || tx.status || tx.lifecycle?.state || '');
-        if (/FINALIZED|ACCEPTED/i.test(status)) return tx;
+        // statusName carries the consensus LIFECYCLE (ACCEPTED / FINALIZED);
+        // genlayer-js 2.0.0-rc.1 reports an EVM revert (a contract UserError)
+        // separately in txExecutionResultName, so a reverted write still shows
+        // FINALIZED. Mirror the SDK's own isSuccessful and fail the step when a
+        // settled tx did not finish cleanly, instead of falsely reporting success.
+        const exec = String(tx.txExecutionResultName || tx.resultName || '');
+        if (/FINALIZED|ACCEPTED/i.test(status)) {
+          if (/ERROR|REVERT|FAIL/i.test(exec)) throw new Error(`Tx ${status}: ${exec}`);
+          return tx;
+        }
         if (/REVERTED|FAILED/i.test(status)) throw new Error(`Tx ${status}`);
         await new Promise((r) => setTimeout(r, 2500));
       }
@@ -539,6 +548,12 @@
       logTx('open_deal', txHash);
       await waitSettled(client, txHash);
       let found = null;
+      // open_deal returns the new on-chain id, but readContract on a just-settled
+      // tx can lag, so recover it by scanning. get_deal is a view call (no gas),
+      // but this is up to 64 sequential network reads and only covers ids 1..64:
+      // if the shared contract already holds more than 64 deals the new id falls
+      // outside the window and a retry will not help — the error below is then a
+      // scan-range limit, not just propagation lag.
       for (let id = 1; id <= 64 && !found; id += 1) {
         try {
           const raw = await client.readContract({ address: SETTLEMENT, functionName: 'get_deal', args: [id] });
@@ -555,14 +570,31 @@
     const recMsg = document.getElementById('event-msg');
     recBtn?.addEventListener('click', () => withStep(recBtn, recMsg, async () => {
       requireSession();
+      const sessionToken = localStorage.getItem('fr.session');
+      const dealId = flow.externalId || 'web_demo';
+      // Step 1 only created the deal on-chain; the evidence API still needs a
+      // matching off-chain record before it will accept any events, otherwise
+      // POST /events returns 404 "Deal not found". Mirror the on-chain deal
+      // into SQLite first (create_deal needs no session); a 409 just means the
+      // deal was already recorded, so it is safe to ignore.
+      const dealRes = await fetch(`${API_BASE}/deals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          deal_id: dealId,
+          definition_of_done: DOD,
+          parties: [window.connectedAddress, window.connectedAddress],
+        }),
+      });
+      if (!dealRes.ok && dealRes.status !== 409) throw new Error(`API ${dealRes.status}: ${await dealRes.text()}`);
       const res = await fetch(`${API_BASE}/events`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: 'Bearer ' + localStorage.getItem('fr.session'),
+          authorization: 'Bearer ' + sessionToken,
         },
         body: JSON.stringify({
-          deal_id: flow.externalId || 'web_demo',
+          deal_id: dealId,
           actor: window.connectedAddress,
           event_type: 'DELIVERY',
           payload: { note: 'recorded from browser', at: Date.now() },
@@ -580,7 +612,7 @@
       const { client, txHash } = await writeTx('dispute', [flow.onchainId, CASE_FILE_URL, EXPECTED_HASH]);
       logTx('dispute', txHash);
       await waitSettled(client, txHash);
-      disMsg.textContent = `Case-file hash anchored on deal #${flow.onchainId}. Resolve via scripts or Studio.`;
+      disMsg.textContent = `Case-file hash anchored on deal #${flow.onchainId}. Note: this demo anchors the repo happy_path case file, whose terms differ from this deal's "demo delivery" agreement — a future resolve would therefore verdict AGREEMENT_MISMATCH and refund the client, not adjudicate on the merits.`;
     }));
   </script>
 </body>
