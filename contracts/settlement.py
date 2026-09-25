@@ -10,6 +10,7 @@ import genlayer as gl
 class _Recipient:
     class View:
         pass
+
     class Write:
         pass
 
@@ -63,7 +64,8 @@ class Settlement(gl.contract.Contract):
         return int(raw)
 
     def _is_party(self, sender_addr, stored_addr: str) -> bool:
-        sender_hex = sender_addr.as_hex if hasattr(sender_addr, "as_hex") else str(sender_addr)
+        sender_hex = sender_addr.as_hex if hasattr(
+            sender_addr, "as_hex") else str(sender_addr)
         return sender_hex.lower() == stored_addr.lower()
 
     def _count_retry(self, d: dict, note: str) -> dict:
@@ -78,7 +80,19 @@ class Settlement(gl.contract.Contract):
         After MAX_RESOLVE_ATTEMPTS the deal stops being retryable and is marked
         unresolvable. That terminal state is deliberately NOT a payout: an
         unreachable case file is not evidence that the worker failed, so the
-        escrow stays put until the parties or the timeout path settle it.
+        escrow stays put.
+
+        KNOWN LIMITATION, flagged by the audit: "unresolvable" is a dead state.
+        Every other entry point gates on a different status (dispute wants
+        funded/delivered, resolve wants disputed, appeal and finalize want
+        adjudicated, timeout_release wants funded), so once a deal lands here no
+        further call — including timeout_release — can move it, and the escrow
+        is locked in the contract indefinitely. It is not stealable, but it is
+        not recoverable either, and `resolve` is unauthenticated, so a third
+        party can drive a deal whose case file is flaky to this state on purpose
+        by calling resolve three times. A rescue path (refund the depositor once
+        the deal is unresolvable and the timeout has elapsed) belongs in the next
+        deployment, not in a docs-only change.
         """
         attempts = d["fetch_failures"] + 1
         d["fetch_failures"] = attempts
@@ -153,12 +167,17 @@ class Settlement(gl.contract.Contract):
             raise gl.vm.UserError("Invalid milestone")
         if len(chain_head) != 64:
             raise gl.vm.UserError("chain_head must be SHA-256")
-        if milestone not in d["milestones"]:
-            d["milestones"][milestone] = chain_head
-        else:
-            if d["milestones"][milestone] == chain_head:
-                raise gl.vm.UserError("Milestone already anchored")
-            d["milestones"][milestone] = chain_head
+        # An anchor is only evidence if it is immutable. The previous version
+        # rejected a byte-identical re-post but silently accepted a different
+        # chain head, so a party could post any anchor, let the dispute run, and
+        # then move milestones.delivery to whatever its own case file claims --
+        # which deletes the only check (ANCHOR_MISMATCH) that compares the case
+        # file against independently recorded on-chain state. Re-anchoring is
+        # therefore refused, not overwritten. The evidence log cannot grow after
+        # the API seals it, so a correct head never needs to be replaced.
+        if milestone in d["milestones"]:
+            raise gl.vm.UserError("Milestone already anchored")
+        d["milestones"][milestone] = chain_head
         self.deals[str(deal_id)] = json.dumps(d)
 
     @gl.public.write
@@ -215,13 +234,32 @@ class Settlement(gl.contract.Contract):
             # open_deal stored SHA-256(canonical_json(definition_of_done));
             # recompute the same digest over what the case file claims and
             # refuse to adjudicate on disagreement.
+            #
+            # Two digests are accepted, because "canonical_json" is not one
+            # function across the stack: Python's json.dumps escapes every
+            # non-ASCII character by default ("e" -> "\u00e9"), while the
+            # browser's JSON.stringify (index.html canonicalJson) emits the
+            # literal UTF-8 character. A client that opens a deal with an
+            # accented term therefore commits the escaped digest, and a
+            # single-form recompute here could never reproduce it, so every
+            # resolve of a perfectly valid deal would refund the client.
+            # For ASCII-only terms the two serializations are byte-identical,
+            # so this widens nothing that was previously correct.
             dod = case.get("definition_of_done")
             if not isinstance(dod, dict) or not dod:
                 return {"verdict": "DISAGREEMENT", "reasoning": "Case file has no definition_of_done"}
-            recomputed = hashlib.sha256(
-                json.dumps(dod, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            ).hexdigest()
-            if recomputed != d["agreement_hash"]:
+            committed = {
+                hashlib.sha256(
+                    json.dumps(dod, sort_keys=True, separators=(
+                        ",", ":")).encode("utf-8")
+                ).hexdigest(),
+                hashlib.sha256(
+                    json.dumps(
+                        dod, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    ).encode("utf-8")
+                ).hexdigest(),
+            }
+            if d["agreement_hash"] not in committed:
                 return {"verdict": "AGREEMENT_MISMATCH",
                         "reasoning": "Case file terms do not match the anchored agreement"}
 
@@ -375,7 +413,8 @@ class Settlement(gl.contract.Contract):
         is_appeal = d["appeals_used"] > 0
         d["verdict"] = verdict
         d["verdict_at"] = self._now()
-        d["reasoning"] = ("FINAL appeal: " if is_appeal else "") + "Validators agreed: " + verdict + ". " + ai_text
+        d["reasoning"] = ("FINAL appeal: " if is_appeal else "") + \
+            "Validators agreed: " + verdict + ". " + ai_text
         d["status"] = "adjudicated"
         self.deals[str(deal_id)] = json.dumps(d)
 
@@ -426,7 +465,8 @@ class Settlement(gl.contract.Contract):
         # call reverts instead of guessing.
         created_at = d.get("created_at_ts")
         if not isinstance(created_at, int):
-            raise gl.vm.UserError("Deal has no created_at_ts; cannot compute timeout")
+            raise gl.vm.UserError(
+                "Deal has no created_at_ts; cannot compute timeout")
         if not (self._now() > created_at + TIMEOUT_SECONDS):
             raise gl.vm.UserError("Timeout not reached (7 days)")
         d["verdict"] = "TIMEOUT"

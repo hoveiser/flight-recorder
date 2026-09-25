@@ -7,3 +7,8 @@ artifacts/
 *.db
 *.sqlite
 flight_recorder.db
+.venv/
+.venv-wsl/
+pip_install.log
+pycheck.txt
+gj.js
