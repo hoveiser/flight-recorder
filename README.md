@@ -76,7 +76,7 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
-Expected: **34 passed** (12 off-chain + 22 direct-mode).
+Expected: **37 passed** (15 off-chain + 22 direct-mode).
 
 ### 3. Run Demos
 
@@ -111,7 +111,7 @@ Run the direct Settlement tests:
 | **v2**  | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Current on-chain deployment. Carries the live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output.                                                                                                                                                                             |
 | **v3**  | repo HEAD (not redeployed)                   | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
 
-**Current status:** v3 contract code is merged to main and covered by direct-mode tests (34 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap.
+**Current status:** v3 contract code is merged to main and covered by direct-mode tests (37 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap. A full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md).
 
 ## Versioning
 
@@ -176,7 +176,10 @@ On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, live). Code gen
 ¹ **v3 onward, repo HEAD.** These two verdicts are added by the hardening work
 on the repo HEAD and are covered by the direct-mode test suite. They are not yet
 present in the deployed v2 contract address below, which is why the on-chain
-evidence stays a continuous v2 record.
+evidence stays a continuous v2 record. In particular, a browser demo deal whose
+case file carries terms other than the deal's own agreement is adjudicated on
+the case file's terms by the deployed v2 — it does **not** come back
+AGREEMENT_MISMATCH until v3 is redeployed.
 
 ## Hash Chain
 
@@ -195,9 +198,14 @@ Each event is linked to the previous one:
 
 The chain is append-only while a deal is live. The moment a dispute is filed the
 log **freezes**: `POST /deals/{deal_id}/seal` sets a `sealed` flag on the deal and
-returns the current chain head hash — the exact value that gets anchored on-chain
-by `dispute`. After that, `POST /events` for the deal is rejected with
-**HTTP 409 `Evidence log sealed after dispute`**.
+returns the current chain head hash. After that, `POST /events` for the deal is
+rejected with **HTTP 409 `Evidence log sealed after dispute`**.
+
+Note precisely what reaches the chain: `dispute()` anchors the **case-file hash**,
+not the chain head. The chain head returned by `/seal` only becomes on-chain
+evidence if a party sends a separate `anchor_milestone(deal_id, "delivery",
+chain_head)` transaction — which `scripts/run_live_scenarios.js` does and the
+browser flow does not.
 
 Why: the contract adjudicates against the case-file hash anchored at dispute
 time. If events could still be appended afterwards, a party could pad the log
@@ -239,6 +247,7 @@ sealing is never a step anyone has to remember.
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
     │   ├── test_flight_recorder.py  # Off-chain tests (12 tests)
+    │   ├── test_agreement_hash_canonicalization.py  # Cross-runtime hash tests (3 tests)
     │   └── direct/test_settlement.py # Direct-mode tests (22 tests)
     ├── demo/
     │   ├── scraper_dispute.py
@@ -254,6 +263,26 @@ sealing is never a step anyone has to remember.
 - Prompt injection: validators receive evidence inside data tags with instructions to ignore embedded commands; adversarial case files are regression-tested by test_prompt_injection_does_not_change_verdict.
 - Timestamps are service-claimed until anchored; on-chain anchoring provides authoritative order.
 - Live on-chain instance is v2; v3/v4 contract code is merged and direct-mode tested, redeploy scheduled (see Versioning and Deployment history).
+- **Escrow amount is caller-declared, not value-derived (audit CRITICAL, present in the
+  deployed v2 as well as repo HEAD).** `open_deal` takes `amount` and only falls back to
+  `gl.message.value` when it is zero, so a caller can record more escrow than it sent and
+  later withdraw that larger figure from the contract's shared balance. Every first-party
+  caller (browser and both scripts) omits the argument and is unaffected. See AUDIT.md F1.
+- **`unresolvable` is a dead state (audit HIGH).** After three failed resolve attempts the
+  escrow can no longer be moved by any method — `dispute`, `resolve`, `appeal`, `finalize`
+  and `timeout_release` all gate on other statuses — so funds lock instead of settling.
+  `resolve` is also unauthenticated, which lets a third party spend a deal's retry
+  allowance deliberately. See AUDIT.md F2/F3.
+- **`anchor_milestone` overwrites an existing anchor (audit HIGH).** Re-posting a milestone
+  with a _different_ head silently replaces it, so the anchored chain head a case file is
+  checked against is not immutable. See AUDIT.md F4.
+- **`chain_integrity.verification` in a case file is self-attested (audit MEDIUM).** The
+  contract reads the PASS/FAIL flag out of the same untrusted JSON whose hash it was given,
+  so that one check proves the file claims integrity, not that it has any. The on-chain
+  anchor and the agreement hash are the checks that bind it. See AUDIT.md F5.
+- Direct-mode tests need Linux/macOS: gltest's loader replaces fd 0 with a temp file and
+  unlinks it while still open, which Windows rejects (`WinError 32`). Run them in the
+  codespace or CI.
 
 ## Roadmap & open questions
 

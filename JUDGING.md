@@ -19,10 +19,12 @@ disputes with AI validators.
 
 1. Contract on GenLayer Studio Next, chain 61997:
    0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D
-   The explorer shows four finalized lifecycle runs, including a live
-   tamper demo: a deliberately wrong case-file hash was anchored,
-   validators re-fetched and re-hashed the evidence, detected the
-   mismatch, and refunded the client.
+   The explorer shows the finalized transactions of four scenario runs, including
+   a live tamper demo: a deliberately wrong case-file hash was anchored,
+   validators re-fetched and re-hashed the evidence, detected the mismatch, and
+   refunded the client. One deal completed the whole lifecycle (open_deal →
+   dispute → resolve → finalize); the other scenarios demonstrate the anchor and
+   the early-timeout rejection.
 
 2. Browser wallet flow: the TRY A DISPUTE section on the site connects
    MetaMask/Rabby and signs open_deal and dispute from the visitor's own
@@ -30,14 +32,14 @@ disputes with AI validators.
    key, no silent gas.
 
 3. Three verification paths on one page: explorer links; pytest tests/ -v
-   (expect 34 passed); and a zero-install hash checker that reproduces
+   (expect 37 passed); and a zero-install hash checker that reproduces
    the anchored SHA-256 in your browser, with a tamper toggle.
 
 ## Reproduce locally, end to end
 
     git clone https://github.com/hoveiser/flight-recorder && cd flight-recorder
     pip install -r requirements.txt && npm install
-    pytest tests/ -v          # 34 passed
+    pytest tests/ -v          # 37 passed
     uvicorn src.main:app      # terminal 1: evidence service
     node scripts/e2e_demo.js  # terminal 2: full on-chain lifecycle
 
@@ -55,9 +57,15 @@ Reference runtime is Python 3.12 (CI); the deployed evidence API runs 3.10
   can still run the local Quick Start path (`uvicorn src.main:app`) for the same
   result.
 - The browser demo anchors the repo happy_path case file while the deal's own
-  agreement is `demo delivery`, so a future resolve of such a browser deal would
-  verdict AGREEMENT_MISMATCH — a client refund — rather than adjudicate the
-  merits.
+  agreement is `demo delivery`. The **deployed v2 does not compare the two**, so a
+  resolve of such a deal today adjudicates the case file's terms on the merits;
+  the AGREEMENT_MISMATCH refund that rejects them outright is repo-HEAD (v3)
+  behaviour and only applies once v3 is redeployed.
+- Contract audit: findings, severities and the redeploy recommendation are in
+  [AUDIT.md](AUDIT.md). Direct-mode tests require Linux/macOS (gltest cannot run
+  its fd-0 message injection on Windows), so `pytest tests/` on Windows reports
+  the 15 off-chain tests green and errors on the 22 direct ones; CI is the
+  authoritative full run.
 - Events are integrity-proofed, not signature-proofed; signed events are
   on the roadmap. Validators re-fetch the served bytes, so a tampered
   case file refunds the client automatically.
