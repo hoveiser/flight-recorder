@@ -612,7 +612,7 @@
       const { client, txHash } = await writeTx('dispute', [flow.onchainId, CASE_FILE_URL, EXPECTED_HASH]);
       logTx('dispute', txHash);
       await waitSettled(client, txHash);
-      disMsg.textContent = `Case-file hash anchored on deal #${flow.onchainId}. Note: this demo anchors the repo happy_path case file, whose terms differ from this deal's "demo delivery" agreement — a future resolve would therefore verdict AGREEMENT_MISMATCH and refund the client, not adjudicate on the merits.`;
+      disMsg.textContent = `Case-file hash anchored on deal #${flow.onchainId}. Note: this demo anchors the repo happy_path case file, whose terms are not this deal's "demo delivery" agreement. The deployed contract does not compare the two, so a resolve there adjudicates the case file's own terms on the merits; only the un-redeployed repo-HEAD contract refuses with AGREEMENT_MISMATCH and refunds the client.`;
     }));
   </script>
 </body>
