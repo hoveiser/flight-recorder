@@ -13,6 +13,24 @@ What is **not** in this audit: `scripts/e2e_demo.js`, `run_live_scenarios.js` an
 `deploy_contract.js` were read, never executed — they spend testnet GEN and write to
 the live contract, which the brief forbids.
 
+## Post-audit status (2026-09-24)
+
+Everything below this heading is the audit as written, kept unedited. What has since
+changed:
+
+| Item                                       | Then (at audit time)                             | Now                                                                                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deployed contract                          | D2 `0x8BC5…`, which lacks the v3 evidence checks | **D3 `0x223323CE…`** — v3 plus the F4 and F6 patches from this branch                                                                                                  |
+| F4, F6                                     | patched in source, undeployed ("dead code")      | **deployed and live**                                                                                                                                                  |
+| F1, F2, F3                                 | reachable mainly via a raw `writeContract` call  | **live on the contract the browser writes to** — still unfixed, so their urgency went up, not down                                                                     |
+| Task E's "do not redeploy v3 as it stands" | the recommendation                               | **not followed in full**: v3 shipped without F1/F2/F3. The evidence-gate benefit arrived as predicted, and so did the exposure the recommendation was guarding against |
+| AGREEMENT_MISMATCH                         | never executable on a deployed contract          | **observed on-chain** in D3's validation run (`scripts/e2e_results.md`)                                                                                                |
+
+Two statements further down are therefore no longer current and should be read with the
+date above: the note that nothing was redeployed, and Task E's deployment recommendation.
+The findings themselves are unchanged — no finding below has been fixed since the audit
+except F4 and F6, which are now actually deployed.
+
 ---
 
 ## Task A — Version archaeology
@@ -31,34 +49,34 @@ v2 = `0x8BC5…` = live, v3 = repo HEAD, not deployed).
 
 Contract-touching history, newest first:
 
-| Commit | Date | Generation |
-| --- | --- | --- |
-| `e5d56e7` | 2026-09-18 | v3 hardening finished (exception retry path, fail-closed timeout, docs) |
-| `086040a` | 2026-09-18 | v3 hardening in progress |
-| `001d268` | 2026-09-17 | **= deployed v2** (`0x8BC5…`) |
-| `38d8e22` | 2026-09-15 | Studio Next deployment, SDK v0.19 migration |
-| `b82195a` … `e33a83a` | 2026-09-09 | Day-4 generations (pre-v1, v0.2.16 API) |
+| Commit                | Date       | Generation                                                              |
+| --------------------- | ---------- | ----------------------------------------------------------------------- |
+| `e5d56e7`             | 2026-09-18 | v3 hardening finished (exception retry path, fail-closed timeout, docs) |
+| `086040a`             | 2026-09-18 | v3 hardening in progress                                                |
+| `001d268`             | 2026-09-17 | **= deployed v2** (`0x8BC5…`)                                           |
+| `38d8e22`             | 2026-09-15 | Studio Next deployment, SDK v0.19 migration                             |
+| `b82195a` … `e33a83a` | 2026-09-09 | Day-4 generations (pre-v1, v0.2.16 API)                                 |
 
 `git diff --stat 001d268 HEAD -- contracts/settlement.py` → **+214 / −39**, one file.
 
 ### Exact behavior diff, v2 (deployed) → v3 (HEAD)
 
-| Area | v2, live on `0x8BC5…` | v3, repo HEAD |
-| --- | --- | --- |
-| Verdict names | `APPROVED`, `REFUNDED`, `EVIDENCE_MISMATCH`, `UNRESOLVABLE`, `TIMEOUT` | adds `AGREEMENT_MISMATCH`, `ANCHOR_MISMATCH`, `TAMPERED_EVIDENCE` (plus internal `DISAGREEMENT` → `AGREEMENT_MISMATCH`) |
-| Agreement check | none — the case file's own `definition_of_done` is trusted | recomputed SHA-256 must equal `agreement_hash` from `open_deal` |
-| Anchor check | `dispute()` wrote `milestones.dispute`; never read during resolve | `milestones.delivery` is read and compared to the case file's `chain_integrity.last_hash` |
-| Chain-integrity check | none | `verification` must be `PASS`, else `TAMPERED_EVIDENCE` |
-| Payout | `_payout(address, amount)` appended the ledger entry **first**, then transferred inside `except Exception: pass` — a failed transfer left the deal terminal and `get_payouts()` reporting a payment that never happened | `_payout(deal, address, amount)` transfers first and lets the exception propagate, so a failed transfer reverts the whole transaction; records `payout_status = "paid"` |
-| Consensus exception | `resolve` stored `debug_error`, returned; deal stayed `disputed` with `fetch_failures` untouched → an endlessly-raising round stranded escrow forever | folded into `UNVERIFIABLE` and charged to the retry counter |
-| Retry accounting | inline `>= 3` literal in `resolve` | `MAX_RESOLVE_ATTEMPTS = 3` via `_count_retry`, shared by every non-judicial outcome |
-| Validator agreement | `mine["verdict"] == leader["verdict"]` for every verdict class | classed: evidence verdicts must match exactly, transient verdicts agree on "retry", LLM decisions are re-derived independently |
-| Clock | `gl.message_raw["datetime"]` with a **wall-clock fallback** (`datetime.now()`) — per-validator time source, non-deterministic at the appeal/finalize/timeout boundaries | `gl.message.datetime` only; no fallback, fails loudly |
-| Timeout | `d.get("created_at_ts", 0)` — a missing timestamp made the deadline look already past | fail-closed: no `created_at_ts` → revert |
-| Debug fields | `debug_verdict`, `debug_result_keys`, `debug_error`, `debug_error_final_status` published in `get_deal` | removed (format change, see F12) |
-| `open_deal` | **unchanged** | **unchanged** — including the escrow-accounting flaw F1 |
-| `appeal` / `finalize` auth | unchanged | unchanged |
-| Appeal-window arithmetic | unchanged (`verdict_at + appeal_window_sec`) | unchanged |
+| Area                       | v2, live on `0x8BC5…`                                                                                                                                                                                                   | v3, repo HEAD                                                                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verdict names              | `APPROVED`, `REFUNDED`, `EVIDENCE_MISMATCH`, `UNRESOLVABLE`, `TIMEOUT`                                                                                                                                                  | adds `AGREEMENT_MISMATCH`, `ANCHOR_MISMATCH`, `TAMPERED_EVIDENCE` (plus internal `DISAGREEMENT` → `AGREEMENT_MISMATCH`)                                                 |
+| Agreement check            | none — the case file's own `definition_of_done` is trusted                                                                                                                                                              | recomputed SHA-256 must equal `agreement_hash` from `open_deal`                                                                                                         |
+| Anchor check               | `dispute()` wrote `milestones.dispute`; never read during resolve                                                                                                                                                       | `milestones.delivery` is read and compared to the case file's `chain_integrity.last_hash`                                                                               |
+| Chain-integrity check      | none                                                                                                                                                                                                                    | `verification` must be `PASS`, else `TAMPERED_EVIDENCE`                                                                                                                 |
+| Payout                     | `_payout(address, amount)` appended the ledger entry **first**, then transferred inside `except Exception: pass` — a failed transfer left the deal terminal and `get_payouts()` reporting a payment that never happened | `_payout(deal, address, amount)` transfers first and lets the exception propagate, so a failed transfer reverts the whole transaction; records `payout_status = "paid"` |
+| Consensus exception        | `resolve` stored `debug_error`, returned; deal stayed `disputed` with `fetch_failures` untouched → an endlessly-raising round stranded escrow forever                                                                   | folded into `UNVERIFIABLE` and charged to the retry counter                                                                                                             |
+| Retry accounting           | inline `>= 3` literal in `resolve`                                                                                                                                                                                      | `MAX_RESOLVE_ATTEMPTS = 3` via `_count_retry`, shared by every non-judicial outcome                                                                                     |
+| Validator agreement        | `mine["verdict"] == leader["verdict"]` for every verdict class                                                                                                                                                          | classed: evidence verdicts must match exactly, transient verdicts agree on "retry", LLM decisions are re-derived independently                                          |
+| Clock                      | `gl.message_raw["datetime"]` with a **wall-clock fallback** (`datetime.now()`) — per-validator time source, non-deterministic at the appeal/finalize/timeout boundaries                                                 | `gl.message.datetime` only; no fallback, fails loudly                                                                                                                   |
+| Timeout                    | `d.get("created_at_ts", 0)` — a missing timestamp made the deadline look already past                                                                                                                                   | fail-closed: no `created_at_ts` → revert                                                                                                                                |
+| Debug fields               | `debug_verdict`, `debug_result_keys`, `debug_error`, `debug_error_final_status` published in `get_deal`                                                                                                                 | removed (format change, see F12)                                                                                                                                        |
+| `open_deal`                | **unchanged**                                                                                                                                                                                                           | **unchanged** — including the escrow-accounting flaw F1                                                                                                                 |
+| `appeal` / `finalize` auth | unchanged                                                                                                                                                                                                               | unchanged                                                                                                                                                               |
+| Appeal-window arithmetic   | unchanged (`verdict_at + appeal_window_sec`)                                                                                                                                                                            | unchanged                                                                                                                                                               |
 
 Note the asymmetry: v3 fixed the money-movement and determinism bugs, and added the
 evidence checks — but left the two most severe issues in this report (F1, F2/F3)
@@ -72,23 +90,23 @@ Severity: **critical** = funds can be moved or destroyed against the other party
 interest; **high** = funds permanently stuck or an integrity guarantee is void;
 **medium** = real but bounded/latent; **low** = robustness, hygiene, documentation.
 
-| ID | Sev | Location | Finding | Status |
-| --- | --- | --- | --- | --- |
-| F1 | critical | `settlement.py:130-132` | Escrow amount is caller-declared, not value-derived | documented + recommended patch |
-| F2 | high | `settlement.py:95-104`; gates at `:189/:365/:424/:442/:459` | `unresolvable` is a terminal dead state; escrow locked forever | documented, docstring corrected |
-| F3 | high | `settlement.py:363` | `resolve` is unauthenticated — anyone can spend a deal's retry allowance (enables F2) and trigger the irreversible evidence refund | documented |
-| F4 | high | `settlement.py:161-181` | `anchor_milestone` silently **overwrites** an existing anchor → `ANCHOR_MISMATCH` is defeatable | **patched** |
-| F5 | medium | `settlement.py:270` | `chain_integrity.verification` is read out of the untrusted case file → self-attested | documented (trust model) |
-| F6 | medium→high | `settlement.py:248-262` | Non-ASCII agreement terms can never verify (Python escapes, browser does not) → valid deals auto-refund | **patched** + 3 tests |
-| F7 | medium | `settlement.py:440-454`, `index.html:547` | 60-second appeal window + `finalize` has no party check → the appeal right is decorative | documented |
-| F8 | medium | `settlement.py:294-296` | The model never sees event payloads, only counts → "AI validators adjudicate the evidence" overstates it | documented |
-| F9 | low | `settlement.py:329-331` vs `:336-347` | `validator_fn` re-runs the whole leader path (2 fetches + 2 LLM calls per resolve); the evidence branch is the one branch without `try/except` | documented |
-| F10 | low | `settlement.py:133-136` | Input validation uses `assert` (not `UserError`) and no hex-charset check → a 64-char non-hex hash is accepted and can never match | documented |
-| F11 | low | `settlement.py:189` | `dispute` accepts status `"delivered"`, which no method can ever set → dead branch; there is no on-chain delivery acknowledgement | documented |
-| F12 | low | `settlement.py:162, 184, 363, 440, 457` | A nonexistent deal id raises a raw `KeyError`/`JSONDecodeError` instead of a `UserError`; `get_deal` returns `"{}"` for unknown ids | documented |
-| F13 | low | `settlement.py:47, 107-126` | `payouts` is one unbounded JSON string rewritten in full per payout; `get_deal`'s JSON shape is a public API (the site parses it) and changed in v3 (`debug_*` removed, `payout_status` added) | documented |
-| F14 | info | `gltest.config.yaml` | The brief's premise is wrong: **the config pins no runner image.** The only version pins are `genlayer-test==0.30.0rc2` and the contract's `Depends: py-genlayer:<digest>` header (`:1`), which no test reconciles | corrected |
-| F15 | info | `gltest/direct/loader.py:310-324` | Direct-mode suite cannot run on Windows at all (upstream bug) | documented, worked around |
+| ID  | Sev         | Location                                                    | Finding                                                                                                                                                                                                            | Status                          |
+| --- | ----------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| F1  | critical    | `settlement.py:130-132`                                     | Escrow amount is caller-declared, not value-derived                                                                                                                                                                | documented + recommended patch  |
+| F2  | high        | `settlement.py:95-104`; gates at `:189/:365/:424/:442/:459` | `unresolvable` is a terminal dead state; escrow locked forever                                                                                                                                                     | documented, docstring corrected |
+| F3  | high        | `settlement.py:363`                                         | `resolve` is unauthenticated — anyone can spend a deal's retry allowance (enables F2) and trigger the irreversible evidence refund                                                                                 | documented                      |
+| F4  | high        | `settlement.py:161-181`                                     | `anchor_milestone` silently **overwrites** an existing anchor → `ANCHOR_MISMATCH` is defeatable                                                                                                                    | **patched**                     |
+| F5  | medium      | `settlement.py:270`                                         | `chain_integrity.verification` is read out of the untrusted case file → self-attested                                                                                                                              | documented (trust model)        |
+| F6  | medium→high | `settlement.py:248-262`                                     | Non-ASCII agreement terms can never verify (Python escapes, browser does not) → valid deals auto-refund                                                                                                            | **patched** + 3 tests           |
+| F7  | medium      | `settlement.py:440-454`, `index.html:547`                   | 60-second appeal window + `finalize` has no party check → the appeal right is decorative                                                                                                                           | documented                      |
+| F8  | medium      | `settlement.py:294-296`                                     | The model never sees event payloads, only counts → "AI validators adjudicate the evidence" overstates it                                                                                                           | documented                      |
+| F9  | low         | `settlement.py:329-331` vs `:336-347`                       | `validator_fn` re-runs the whole leader path (2 fetches + 2 LLM calls per resolve); the evidence branch is the one branch without `try/except`                                                                     | documented                      |
+| F10 | low         | `settlement.py:133-136`                                     | Input validation uses `assert` (not `UserError`) and no hex-charset check → a 64-char non-hex hash is accepted and can never match                                                                                 | documented                      |
+| F11 | low         | `settlement.py:189`                                         | `dispute` accepts status `"delivered"`, which no method can ever set → dead branch; there is no on-chain delivery acknowledgement                                                                                  | documented                      |
+| F12 | low         | `settlement.py:162, 184, 363, 440, 457`                     | A nonexistent deal id raises a raw `KeyError`/`JSONDecodeError` instead of a `UserError`; `get_deal` returns `"{}"` for unknown ids                                                                                | documented                      |
+| F13 | low         | `settlement.py:47, 107-126`                                 | `payouts` is one unbounded JSON string rewritten in full per payout; `get_deal`'s JSON shape is a public API (the site parses it) and changed in v3 (`debug_*` removed, `payout_status` added)                     | documented                      |
+| F14 | info        | `gltest.config.yaml`                                        | The brief's premise is wrong: **the config pins no runner image.** The only version pins are `genlayer-test==0.30.0rc2` and the contract's `Depends: py-genlayer:<digest>` header (`:1`), which no test reconciles | corrected                       |
+| F15 | info        | `gltest/direct/loader.py:310-324`                           | Direct-mode suite cannot run on Windows at all (upstream bug)                                                                                                                                                      | documented, worked around       |
 
 ### F1 — critical: the contract trusts a caller-supplied escrow amount
 
@@ -107,7 +125,7 @@ Exploit: attacker calls `open_deal(..., amount=10 ETH-worth)` while attaching 0.
 `assert amount > 0` passes; the deal is recorded as a 10-escrow. Victim later opens
 their own deal and funds it honestly. Adjudication favors the attacker (or the
 attacker simply waits out the timeout), `finalize`/`timeout_release` transfers the
-*recorded* 10 out of the pool, and the contract holds enough to pay it. The victim's
+_recorded_ 10 out of the pool, and the contract holds enough to pay it. The victim's
 escrow is gone. The reverse direction — over-declaring and then losing — strands
 the deal, because the transfer of more than the contract holds reverts and, with
 `status` gated on `adjudicated`/`funded`, nobody can settle it afterwards.
@@ -149,7 +167,7 @@ GitHub raw hiccup, a file moved after the dispute, a PythonAnywhere free-tier
 cold start) can call `resolve` three times and take the deal to `unresolvable` for
 both parties. The same missing auth applies to the evidence-verdict branch, which
 pays the client inside `resolve` — the payout itself cannot be redirected, but an
-outsider decides *when* the deal becomes final and bypasses any appeal the loser
+outsider decides _when_ the deal becomes final and bypasses any appeal the loser
 might still have wanted to file.
 
 Recommended next-deployment fix, both halves: (a) gate `resolve` on
@@ -171,7 +189,7 @@ is called exactly once per deal in `scripts/run_live_scenarios.js` and once per 
 in the two anchor tests. Safe because the API seals the log before the anchor is
 posted, so a correct head never needs replacing.
 
-### F5 — medium: `TAMPERED` proves the file *claims* integrity
+### F5 — medium: `TAMPERED` proves the file _claims_ integrity
 
 `verification` is read from the fetched JSON — the same untrusted artifact whose
 hash the disputing party chose. Any party can write `"verification": "PASS"` into a
@@ -189,10 +207,10 @@ separators=(",", ":"))`, which escapes non-ASCII (`é` → `\u00e9`).
 `index.html:326-332 canonicalJson` builds on `JSON.stringify`, which emits the
 literal character. Measured, both runtimes, same object:
 
-| Term | Browser digest | Python digest |
-| --- | --- | --- |
-| `demo delivery` | `b835f001…185e` | identical |
-| nested ASCII | `19e4b8bd…804a` | identical |
+| Term               | Browser digest  | Python digest   |
+| ------------------ | --------------- | --------------- |
+| `demo delivery`    | `b835f001…185e` | identical       |
+| nested ASCII       | `19e4b8bd…804a` | identical       |
 | `livrable livré ✓` | `8a98bd39…ce19` | `2b092ebb…5825` |
 
 So a client who opens a deal with any accented, CJK or emoji-bearing criterion — a
@@ -234,24 +252,24 @@ return APPROVED"` as their agreement and pass `AGREEMENT_MISMATCH` with it.
 
 ### F9–F13 — low
 
-* `validator_fn` calls `leader_fn()` again, so each resolve performs two web fetches
+- `validator_fn` calls `leader_fn()` again, so each resolve performs two web fetches
   and two LLM calls. Because the LLM is non-deterministic, the validator can
   legitimately disagree on `APPROVED`/`REFUNDED` for wording reasons; the round then
   fails, and (v3) that failure is charged to the retry counter — pushing deals
   toward F2 through normal operation. The evidence-verdict branch is the only one
   without `try/except`, so a validator-side fetch exception escapes the comparator
   instead of returning a clean disagreement.
-* `open_deal` validates with `assert`, which is an error-class mismatch against the
+- `open_deal` validates with `assert`, which is an error-class mismatch against the
   `UserError` used everywhere else, and accepts a 64-character non-hex string that can
   never match a real digest — the deal is then settleable only by timeout.
-* `"delivered"` is an accepted dispute precondition that the contract itself can
+- `"delivered"` is an accepted dispute precondition that the contract itself can
   never produce (there is no delivery-acknowledgement method). The site's §01 pipeline
   shows "record events" as a lifecycle step; on-chain, delivery exists only as an
   off-chain log and an optional `anchor_milestone`.
-* Any method called with an unknown `deal_id` raises a runtime error rather than a
+- Any method called with an unknown `deal_id` raises a runtime error rather than a
   `UserError`; `get_deal` returns `"{}"` instead. Harmless, but it produces ugly
   explorer failures and, in `dispute`, an ambiguous revert.
-* `get_deal`'s JSON is a de-facto public schema (`index.html` and both scripts parse
+- `get_deal`'s JSON is a de-facto public schema (`index.html` and both scripts parse
   it). v3 removed four `debug_*` keys and added `payout_status`. Nothing in the repo
   read the removed keys, so no caller breaks — but there is no versioning or schema
   test protecting the next change.
@@ -276,19 +294,19 @@ being used by another process: 'C:\Users\...\Temp\tmp_a3nfxbq'
 All 22 fail identically at `direct_deploy`, before any assertion of ours executes.
 This is an upstream Windows incompatibility in the pinned runner, and it is itself
 worth knowing: the contract suite is Linux/macOS-only, which CI and the codespace
-provide. Nothing in this audit depends on a contract *execution* result — every
+provide. Nothing in this audit depends on a contract _execution_ result — every
 finding below is from reading the code and from measurements reproducible in pure
 Python — so static analysis plus the off-chain suite carries the conclusions, and
 the direct-mode re-validation is left to CI.
 
 ### Results
 
-| Run | Before | After |
-| --- | --- | --- |
-| `pytest tests/test_flight_recorder.py -q` | **12 passed** (3.0 s) | **12 passed** |
-| `pytest tests/ -q` (off-chain, incl. new file) | 12 passed | **15 passed** (2.3 s) |
-| `pytest tests/direct/test_settlement.py -q` | 22 failed — `WinError 32`, environmental | not re-run; unchanged by this branch's patches in principle, see below |
-| `python -m py_compile contracts/settlement.py` | — | clean |
+| Run                                            | Before                                   | After                                                                  |
+| ---------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| `pytest tests/test_flight_recorder.py -q`      | **12 passed** (3.0 s)                    | **12 passed**                                                          |
+| `pytest tests/ -q` (off-chain, incl. new file) | 12 passed                                | **15 passed** (2.3 s)                                                  |
+| `pytest tests/direct/test_settlement.py -q`    | 22 failed — `WinError 32`, environmental | not re-run; unchanged by this branch's patches in principle, see below |
+| `python -m py_compile contracts/settlement.py` | —                                        | clean                                                                  |
 
 Contract changes in this branch are two: F6 (accept both canonical digests) and F4
 (refuse re-anchoring). By construction neither can disturb an existing test — F6 only
@@ -304,23 +322,23 @@ verification run here; CI on `audit-contract` is the check.
 For each public claim: **v2** = true of the deployed contract, **v3** = true only of
 repo HEAD, **false** = wrong for both.
 
-| Claim (file:line) | Reality |
-| --- | --- |
-| `README.md` Deployment history table: v2 is live, v3 merged not redeployed | true, and confirmed archaeologically (`001d268`) |
-| `README.md` verdict table footnotes `AGREEMENT_MISMATCH`/`ANCHOR_MISMATCH` as v3-only | **true** — correctly labeled before this audit |
-| `README.md` "Evidence seal": chain head is "the exact value that gets anchored on-chain by `dispute`" | **false** for v2 and v3 — `dispute()` anchors the *case-file* hash and writes no milestone at all (v3 deliberately removed the `milestones["dispute"]` write). The head reaches the chain only via a separate `anchor_milestone` tx, which `run_live_scenarios.js` sends and the browser never does. **Corrected.** |
-| `README.md` On-Chain Contract Methods table: `resolve` = "AI validators adjudicate" | true-but-thin: the model sees counts and a self-attested integrity flag, not event payloads (F8) |
-| `README.md` same table: `appeal` = "Loser contests verdict" | true with an asterisk: a 60 s window from the browser makes it practically unusable (F7) |
-| `README.md` Threat model, "on-chain anchoring provides authoritative order" | overstated while anchors were mutable (F4, patched); the anchor is still party-posted, not service-posted |
-| `JUDGING.md` "The explorer shows four finalized lifecycle runs" | **misleading** — four *scenarios*, of which one deal ran the full lifecycle and one ran the mismatch refund; deals 2 and 3 are an anchor and a rejected early timeout. **Corrected.** |
-| `JUDGING.md` Honest boundaries: browser demo "would verdict AGREEMENT_MISMATCH" | **v3-only** — deployed v2 does not compare agreement to case-file terms, so it adjudicates the anchored file's terms on the merits. **Corrected.** |
-| `index.html:615` step-3 message, same claim | **v3-only**, same reason. **Corrected** (the only `index.html` string touched, per the brief's exception for a proven false claim) |
-| `index.html` §05 verdict table (`APPROVED`/`REFUNDED`/`EVIDENCE_MISMATCH`/`UNRESOLVABLE`/`TIMEOUT`) | **true for v2** — it lists exactly the five verdicts the deployed contract can emit, and omits the three v3-only ones. No change needed. |
-| `index.html` §01/§02E "Deal 4 completed the full lifecycle … paying the worker 0.1 GEN" | **true for v2** — v2 could produce every one of those four txs |
-| `scripts/e2e_results.md` scenario matrix rows 1-4 + tx hashes | **true for v2** — happy path, anchor, early-timeout-rejection and mismatch-refund are all reachable in v2, and the mismatch row correctly says `EVIDENCE_MISMATCH` (the label exists in both generations) |
-| `scripts/e2e_results.md` "pays the client through `_payout`" | true, but for the deployed v2 that call could silently fail behind `except Exception: pass` while still reporting the payout — v3's atomicity fix is what makes this sentence safe. Worth a footnote on next edit. |
-| `DEVELOPMENT_LOG.md:117-134` v3 hardening list and "on-chain history unchanged: v2 = current live deployment" | **true** |
-| Brief's premise "gltest.config.yaml pins a runner image" | **false** — it pins networks/paths/env only (F14) |
+| Claim (file:line)                                                                                             | Reality                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md` Deployment history table: v2 is live, v3 merged not redeployed                                    | true, and confirmed archaeologically (`001d268`)                                                                                                                                                                                                                                                                    |
+| `README.md` verdict table footnotes `AGREEMENT_MISMATCH`/`ANCHOR_MISMATCH` as v3-only                         | **true** — correctly labeled before this audit                                                                                                                                                                                                                                                                      |
+| `README.md` "Evidence seal": chain head is "the exact value that gets anchored on-chain by `dispute`"         | **false** for v2 and v3 — `dispute()` anchors the _case-file_ hash and writes no milestone at all (v3 deliberately removed the `milestones["dispute"]` write). The head reaches the chain only via a separate `anchor_milestone` tx, which `run_live_scenarios.js` sends and the browser never does. **Corrected.** |
+| `README.md` On-Chain Contract Methods table: `resolve` = "AI validators adjudicate"                           | true-but-thin: the model sees counts and a self-attested integrity flag, not event payloads (F8)                                                                                                                                                                                                                    |
+| `README.md` same table: `appeal` = "Loser contests verdict"                                                   | true with an asterisk: a 60 s window from the browser makes it practically unusable (F7)                                                                                                                                                                                                                            |
+| `README.md` Threat model, "on-chain anchoring provides authoritative order"                                   | overstated while anchors were mutable (F4, patched); the anchor is still party-posted, not service-posted                                                                                                                                                                                                           |
+| `JUDGING.md` "The explorer shows four finalized lifecycle runs"                                               | **misleading** — four _scenarios_, of which one deal ran the full lifecycle and one ran the mismatch refund; deals 2 and 3 are an anchor and a rejected early timeout. **Corrected.**                                                                                                                               |
+| `JUDGING.md` Honest boundaries: browser demo "would verdict AGREEMENT_MISMATCH"                               | **v3-only** — deployed v2 does not compare agreement to case-file terms, so it adjudicates the anchored file's terms on the merits. **Corrected.**                                                                                                                                                                  |
+| `index.html:615` step-3 message, same claim                                                                   | **v3-only**, same reason. **Corrected** (the only `index.html` string touched, per the brief's exception for a proven false claim)                                                                                                                                                                                  |
+| `index.html` §05 verdict table (`APPROVED`/`REFUNDED`/`EVIDENCE_MISMATCH`/`UNRESOLVABLE`/`TIMEOUT`)           | **true for v2** — it lists exactly the five verdicts the deployed contract can emit, and omits the three v3-only ones. No change needed.                                                                                                                                                                            |
+| `index.html` §01/§02E "Deal 4 completed the full lifecycle … paying the worker 0.1 GEN"                       | **true for v2** — v2 could produce every one of those four txs                                                                                                                                                                                                                                                      |
+| `scripts/e2e_results.md` scenario matrix rows 1-4 + tx hashes                                                 | **true for v2** — happy path, anchor, early-timeout-rejection and mismatch-refund are all reachable in v2, and the mismatch row correctly says `EVIDENCE_MISMATCH` (the label exists in both generations)                                                                                                           |
+| `scripts/e2e_results.md` "pays the client through `_payout`"                                                  | true, but for the deployed v2 that call could silently fail behind `except Exception: pass` while still reporting the payout — v3's atomicity fix is what makes this sentence safe. Worth a footnote on next edit.                                                                                                  |
+| `DEVELOPMENT_LOG.md:117-134` v3 hardening list and "on-chain history unchanged: v2 = current live deployment" | **true**                                                                                                                                                                                                                                                                                                            |
+| Brief's premise "gltest.config.yaml pins a runner image"                                                      | **false** — it pins networks/paths/env only (F14)                                                                                                                                                                                                                                                                   |
 
 ### Corrected strings (applied in this branch)
 
@@ -352,7 +370,7 @@ repo HEAD, **false** = wrong for both.
 > Note precisely what reaches the chain: `dispute()` anchors the **case-file hash**,
 > not the chain head. The chain head returned by `/seal` only becomes on-chain
 > evidence if a party sends a separate `anchor_milestone(deal_id, "delivery",
-> chain_head)` transaction — which `scripts/run_live_scenarios.js` does and the
+chain_head)` transaction — which `scripts/run_live_scenarios.js` does and the
 > browser flow does not.
 
 `README.md`, verdict-table footnote —
@@ -365,6 +383,10 @@ repo HEAD, **false** = wrong for both.
 
 ## Task E — Recommendation
 
+_Written before deployment. Superseded in part on 2026-09-24 by the D3 deployment — see
+"Post-audit status" at the top of this file. v3 went live with F4 and F6 but without the
+F1/F2/F3 fixes this section asks for, so the ordering argument below did not hold._
+
 **Do not redeploy v3 as it stands. Do not keep it shelved either: redeploy a v4 that
 is v3 plus F1, F2 and F3.**
 
@@ -372,15 +394,15 @@ The reason is ordering. v3's actual value on-chain is the evidence checks and pa
 atomicity, but shipping it unchanged buys those while leaving three worse problems
 live:
 
-* Redeploying without **F1** puts a contract with a caller-declared escrow amount in
+- Redeploying without **F1** puts a contract with a caller-declared escrow amount in
   front of browser users. Today that is reachable by anyone comfortable with a raw
   `writeContract` call, and the exposure only grows as the site gets traffic.
-* Redeploying without a rescue from **F2** means the first deal whose case file goes
+- Redeploying without a rescue from **F2** means the first deal whose case file goes
   flaky three times locks real GEN in the contract with no code path out — and v3
-  makes that state *easier* to reach than v2 did, because it now charges consensus
+  makes that state _easier_ to reach than v2 did, because it now charges consensus
   exceptions to the same counter (a genuine improvement in one direction, a larger
   blast radius in the other).
-* Redeploying without gating **F3** hands any third party the lever for F2.
+- Redeploying without gating **F3** hands any third party the lever for F2.
 
 Against that, the costs of waiting are also concrete: F4 and F6 are already fixed in
 this branch's source and mean nothing until something is deployed; the v2 payout bug
@@ -403,12 +425,12 @@ Concretely, in one deployment:
 
 Risks either way, stated plainly:
 
-* **Redeploy now:** a new address splits the on-chain evidence trail the README and
+- **Redeploy now:** a new address splits the on-chain evidence trail the README and
   `JUDGING.md` lean on ("one continuous history"), every documented tx hash points
   at the old contract, and a freshly deployed contract has zero live runs behind it.
   Mitigate by keeping the v2 row in Deployment history marked superseded, exactly as
   v1 already is.
-* **Keep waiting:** F4 and F6 stay dead code, deployed v2 keeps the swallowed-payout
+- **Keep waiting:** F4 and F6 stay dead code, deployed v2 keeps the swallowed-payout
   bug, and any browser deal with a non-ASCII agreement would auto-refund on
   adjudication — though none can today, because the site hardcodes an ASCII `DOD` and
   there is no user-supplied-terms path in the browser flow. The live risk while
@@ -416,5 +438,5 @@ Risks either way, stated plainly:
 
 Either way, F5 (self-attested integrity) cannot be fixed by redeployment at all.
 It needs signed events, which is already the roadmap item; the honest interim
-position is that the contract verifies *consistency with what was committed*, not
-*truthfulness of what was committed*.
+position is that the contract verifies _consistency with what was committed_, not
+_truthfulness of what was committed_.

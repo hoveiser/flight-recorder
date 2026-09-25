@@ -91,8 +91,9 @@ Each script records a full deal lifecycle (events → seal → verify) against t
 
 The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
 
-- Contract address: `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D`
-- Explorer: https://explorer-studio-dev.genlayer.com/address/0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D
+- Contract address: `0x223323CE1b755313212FaD13016543C0E4E63E12` (audited v3, deployed 2026-09-24)
+- Explorer: https://explorer-studio-dev.genlayer.com/address/0x223323CE1b755313212FaD13016543C0E4E63E12
+- Previous deployment: `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` — still on-chain and verifiable; every transaction hash documented in `scripts/e2e_results.md` and on the site belongs to it.
 
 Run the end-to-end flow from the repository root:
 
@@ -105,17 +106,17 @@ Run the direct Settlement tests:
 
 ### Deployment history
 
-| Version | Address                                      | What it is                                                                                                                                                                                                                                                                                                                   |
-| ------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **v1**  | `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` | Demo-video lifecycle: the first end-to-end run used in the recorded walkthrough.                                                                                                                                                                                                                                             |
-| **v2**  | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Current on-chain deployment. Carries the live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output.                                                                                                                                                                             |
-| **v3**  | repo HEAD (not redeployed)                   | Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout. Covered by the direct-mode tests. Deliberately **not** redeployed so the on-chain evidence above stays one continuous history rather than a second, parallel address. |
+| Version           | Address                                      | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **v1**            | `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` | Demo-video lifecycle: the first end-to-end run used in the recorded walkthrough.                                                                                                                                                                                                                                                                                                                                                                                  |
+| **v2**            | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Superseded by `0x223323CE…` on 2026-09-24; see Deployment history. Remains on-chain as historical evidence and carries the four live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output.                                                                                                                                                                                                                           |
+| **v3-audit** (D3) | `0x223323CE1b755313212FaD13016543C0E4E63E12` | **Current on-chain deployment** (2026-09-24). Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout — plus audit patches **F4** (anchor is immutable once written) and **F6** (agreement digest accepted in both Python and browser canonical forms). Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve = `AGREEMENT_MISMATCH` refund → payout. |
 
-**Current status:** v3 contract code is merged to main and covered by direct-mode tests (37 passed); the live on-chain instance remains v2 (0x8BC5…) to preserve the on-chain evidence trail. The scheduled v3 redeploy is on the roadmap. A full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md).
+**Current status:** the audited v3 contract is live at `0x223323CE…` (D3). The v2 contract at `0x8BC5…` is **not** deleted or forked — it stays on-chain, so every transaction hash referenced in this README, `JUDGING.md`, `scripts/e2e_results.md` and `index.html` still resolves to a real record. What changed is only _which_ address new writes go to. Test coverage is 37 (15 off-chain + 22 direct-mode); a full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md). Audit findings **F1, F2 and F3 are still open in the deployed contract** — see Threat model below and Task E in AUDIT.md.
 
 ## Versioning
 
-On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, live). Code generations are numbered v3 (merged, not redeployed), v4 (hardening + first roadmap items), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
+On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, superseded), D3 (0x2233…, live). Code generations are numbered v3 (the audited hardening now deployed as D3), v4 (F1/F2/F3 fixes + first roadmap items), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
 
 ## API Reference
 
@@ -173,13 +174,13 @@ On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, live). Code gen
 | UNRESOLVABLE         | Too many failed attempts                            | No payout          |
 | TIMEOUT              | No dispute filed                                    | Worker gets paid   |
 
-¹ **v3 onward, repo HEAD.** These two verdicts are added by the hardening work
-on the repo HEAD and are covered by the direct-mode test suite. They are not yet
-present in the deployed v2 contract address below, which is why the on-chain
-evidence stays a continuous v2 record. In particular, a browser demo deal whose
-case file carries terms other than the deal's own agreement is adjudicated on
-the case file's terms by the deployed v2 — it does **not** come back
-AGREEMENT_MISMATCH until v3 is redeployed.
+¹ **Deployed since D3 (`0x223323CE…`, 2026-09-24).** These two verdicts come from the
+hardening work and are covered by the direct-mode test suite; they now execute on-chain.
+The previous deployment (D2, `0x8BC5…`) does not have them, which is why the older
+on-chain evidence stays a continuous D2 record. Concretely: a browser demo deal whose
+anchored case file carries terms other than the deal's own agreement is adjudicated on
+the case file's terms by D2, but comes back AGREEMENT_MISMATCH and is refunded by D3.
+D3's validation run is exactly that path (`scripts/e2e_results.md`).
 
 ## Hash Chain
 
@@ -262,9 +263,9 @@ sealing is never a step anyone has to remember.
 - Seal access: POST /deals/{id}/seal requires a deal-party actor (body field or X-Actor); strangers cannot freeze an opponent's log.
 - Prompt injection: validators receive evidence inside data tags with instructions to ignore embedded commands; adversarial case files are regression-tested by test_prompt_injection_does_not_change_verdict.
 - Timestamps are service-claimed until anchored; on-chain anchoring provides authoritative order.
-- Live on-chain instance is v2; v3/v4 contract code is merged and direct-mode tested, redeploy scheduled (see Versioning and Deployment history).
+- Live on-chain instance is D3 (`0x223323CE…`): the audited v3 hardening plus audit patches F4 and F6. D2 (`0x8BC5…`) remains on-chain as historical evidence. Findings F1, F2 and F3 are **not** fixed by that deployment and are listed below.
 - **Escrow amount is caller-declared, not value-derived (audit CRITICAL, present in the
-  deployed v2 as well as repo HEAD).** `open_deal` takes `amount` and only falls back to
+  deployed D3 contract as well as repo HEAD).** `open_deal` takes `amount` and only falls back to
   `gl.message.value` when it is zero, so a caller can record more escrow than it sent and
   later withdraw that larger figure from the contract's shared balance. Every first-party
   caller (browser and both scripts) omits the argument and is unaffected. See AUDIT.md F1.
@@ -300,10 +301,14 @@ Known gaps, stated plainly rather than discovered later:
 - **Appeal with new evidence.** Today `appeal` re-runs consensus over the _same_
   anchored case file, so it can only produce a different verdict by chance. A real
   appeal would accept a new case-file hash and re-anchor it.
-- **Redeploy v3 to Studio Next.** The deployed contract is v2 while the repo HEAD is
-  v3, so the hardening (agreement/anchor verification, fail-closed timeout, exception
-  retry) is proven by the direct-mode suite but not yet by on-chain execution.
-  Deliberately deferred to post-hackathon so the live evidence stays continuous.
+- **Redeploy v3 to Studio Next — DONE (D3, `0x223323CE…`, 2026-09-24).** The audited v3
+  hardening plus patches F4 and F6 is now the live contract, validated by a full
+  `scripts/e2e_demo.js` lifecycle whose `resolve` returned `AGREEMENT_MISMATCH` and
+  refunded the client (`scripts/e2e_results.md`).
+- **Deploy F1, F2 and F3 as D4.** Those three audit findings survived the D3 deployment,
+  so the caller-declared escrow amount, the `unresolvable` dead state and the
+  unauthenticated `resolve` are live behaviour on the contract the browser now writes to.
+  See AUDIT.md Task E for the patch order.
 - **Hosted evidence API — DONE.** The off-chain recorder now runs on
   PythonAnywhere (`https://hreicher.pythonanywhere.com`), which `index.html`
   targets for `github.io` hosts, so visitors can complete the whole lifecycle
