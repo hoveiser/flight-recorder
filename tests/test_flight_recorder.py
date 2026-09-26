@@ -1,5 +1,9 @@
+import importlib
 import json
 import threading
+from datetime import datetime, timedelta, timezone
+
+from fastapi.testclient import TestClient
 
 from src import db
 
@@ -268,3 +272,88 @@ def test_concurrent_writes_cannot_fork_chain(client, deal):
     for i, ev in enumerate(events[1:], start=1):
         assert ev["previous_event_hash"] == events[i - 1]["event_hash"]
     assert hashes[-1] not in prevs
+
+
+def test_auth_flow_persists_session_and_single_use_nonce(client):
+    """nonce -> verify -> session runs entirely through SQLite.
+
+    Covers the auth endpoints (previously untested) and the persistence layer:
+    the nonce is stored, consumed exactly once, and the issued session token is
+    retrievable from the DB keyed to the recovered address.
+    """
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+
+    acct = Account.create()
+    nonce = client.post("/api/auth/nonce").json()["nonce"]
+    assert db.get_nonce(nonce) is not None
+
+    signed = acct.sign_message(encode_defunct(text=nonce))
+    verify = client.post(
+        "/api/auth/verify",
+        json={
+            "address": acct.address,
+            "signature": signed.signature.hex(),
+            "nonce": nonce,
+        },
+    )
+    assert verify.status_code == 200, verify.text
+    token = verify.json()["session_token"]
+
+    stored = db.get_session(token)
+    assert stored is not None
+    assert stored["address"].lower() == acct.address.lower()
+
+    # The nonce was consumed by the successful verify and cannot be replayed.
+    assert db.get_nonce(nonce) is None
+    replay = client.post(
+        "/api/auth/verify",
+        json={
+            "address": acct.address,
+            "signature": signed.signature.hex(),
+            "nonce": nonce,
+        },
+    )
+    assert replay.status_code == 401
+
+
+def test_session_survives_app_restart(client, deal):
+    """A session issued before a restart still authenticates afterwards.
+
+    Reloading src.main re-executes the module (resetting any in-memory state and
+    re-running init_db) and yields a brand-new FastAPI app — a faithful stand-in
+    for a worker restart. Because sessions live in SQLite the token survives;
+    against the old process-memory dict this reload would log the agent out and
+    the assertion below would fail with 401. This is what lets the service run
+    with more than one worker.
+    """
+    from src import main as main_mod
+
+    deal_id = deal["deal_id"]
+    token = "restart-survivor-token"
+    db.store_session(token, "agentA", datetime.now(timezone.utc) + timedelta(days=7))
+
+    before = client.post(
+        "/events",
+        json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST",
+              "payload": {"phase": "before-restart"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert before.status_code == 200, before.text
+
+    # Simulate the restart: reload the app module and build a fresh client.
+    importlib.reload(main_mod)
+    restarted = TestClient(main_mod.app)
+
+    after = restarted.post(
+        "/events",
+        json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST",
+              "payload": {"phase": "after-restart"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert after.status_code == 200, after.text
+
+    # Both events landed in the same SQLite-backed chain across the restart.
+    events = client.get(f"/deals/{deal_id}/events").json()
+    assert len(events) == 2
+    assert client.get(f"/deals/{deal_id}/verify").json()["verification"] == "PASS"

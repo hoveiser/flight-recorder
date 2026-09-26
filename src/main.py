@@ -28,8 +28,10 @@ app.add_middleware(
 
 db.init_db()
 
-_nonces: dict[str, datetime] = {}
-_sessions: dict[str, dict] = {}
+# Nonces and sessions are persisted in SQLite (db.store_nonce/get_nonce/
+# delete_nonce and db.store_session/get_session), not in process memory. A
+# worker restart — or a second uvicorn worker — therefore no longer drops
+# active agent sessions, and a consumed nonce stays consumed across processes.
 
 _deal_write_locks: dict[str, threading.Lock] = {}
 _deal_write_locks_guard = threading.Lock()
@@ -58,7 +60,7 @@ def _require_session(authorization: Optional[str]) -> str:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Missing session token")
     token = authorization.split(" ", 1)[1].strip()
-    record = _sessions.get(token)
+    record = db.get_session(token)
     now = datetime.now(timezone.utc)
     if record is None or record["expires_at"] < now:
         raise HTTPException(401, "Invalid or expired session")
@@ -69,13 +71,13 @@ def _require_session(authorization: Optional[str]) -> str:
 def auth_nonce():
     nonce = f"Flight Recorder login {secrets.token_hex(16)}"
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-    _nonces[nonce] = expires_at
+    db.store_nonce(nonce, expires_at)
     return {"nonce": nonce, "expires_at": expires_at.isoformat()}
 
 
 @app.post("/api/auth/verify")
 def auth_verify(body: AuthVerify):
-    expires_at = _nonces.get(body.nonce)
+    expires_at = db.get_nonce(body.nonce)
     now = datetime.now(timezone.utc)
     if expires_at is None or expires_at < now:
         raise HTTPException(401, "Nonce missing or expired")
@@ -85,10 +87,10 @@ def auth_verify(body: AuthVerify):
         raise HTTPException(401, "Invalid signature")
     if recovered.lower() != body.address.lower():
         raise HTTPException(401, "Signature does not match address")
-    del _nonces[body.nonce]
+    db.delete_nonce(body.nonce)
     token = secrets.token_urlsafe(32)
     session_expires = now + timedelta(days=7)
-    _sessions[token] = {"address": recovered, "expires_at": session_expires}
+    db.store_session(token, recovered, session_expires)
     return {"session_token": token, "expires_at": session_expires.isoformat()}
 
 
