@@ -76,7 +76,7 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
-Expected: **37 passed** (15 off-chain + 22 direct-mode).
+Expected: **46 passed** (17 off-chain + 29 direct-mode).
 
 ### 3. Run Demos
 
@@ -91,9 +91,9 @@ Each script records a full deal lifecycle (events → seal → verify) against t
 
 The Settlement contract is deployed on GenLayer Studio Next (chain ID `61997`).
 
-- Contract address: `0x223323CE1b755313212FaD13016543C0E4E63E12` (audited v3, deployed 2026-09-24)
-- Explorer: https://explorer-studio-dev.genlayer.com/address/0x223323CE1b755313212FaD13016543C0E4E63E12
-- Previous deployment: `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` — still on-chain and verifiable; every transaction hash documented in `scripts/e2e_results.md` and on the site belongs to it.
+- Contract address: `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` (v4 / D4, deployed 2026-09-26)
+- Explorer: https://explorer-studio-dev.genlayer.com/address/0xfD91f7eDCa653702ACe1F040F4d56d35e674c750
+- Previous deployments: `0x223323CE1b755313212FaD13016543C0E4E63E12` (audited v3 / D3) and `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` (v2 / D2) — both still on-chain and verifiable; the transaction hashes documented in `scripts/e2e_results.md` and on the site belong to them.
 
 Run the end-to-end flow from the repository root:
 
@@ -110,13 +110,14 @@ Run the direct Settlement tests:
 | ----------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **v1**            | `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` | Demo-video lifecycle: the first end-to-end run used in the recorded walkthrough.                                                                                                                                                                                                                                                                                                                                                                                  |
 | **v2**            | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Superseded by `0x223323CE…` on 2026-09-24; see Deployment history. Remains on-chain as historical evidence and carries the four live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output.                                                                                                                                                                                                                           |
-| **v3-audit** (D3) | `0x223323CE1b755313212FaD13016543C0E4E63E12` | **Current on-chain deployment** (2026-09-24). Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout — plus audit patches **F4** (anchor is immutable once written) and **F6** (agreement digest accepted in both Python and browser canonical forms). Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve = `AGREEMENT_MISMATCH` refund → payout. |
+| **v3-audit** (D3) | `0x223323CE1b755313212FaD13016543C0E4E63E12` | Superseded by **v4 / D4** on 2026-09-26; remains on-chain and verifiable. Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout — plus audit patches **F4** (anchor is immutable once written) and **F6** (agreement digest accepted in both Python and browser canonical forms). Findings **F1, F2 and F3 were still open here**; they are fixed in v4. Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve = `AGREEMENT_MISMATCH` refund → payout. |
+| **v4** (D4)       | `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` | **Current on-chain deployment** (2026-09-26). Everything in v3-audit plus the three findings that survived it — **F1** (escrow is exactly `gl.message.value`, never caller-declared), **F2** (an `unresolvable` deal is refunded by `timeout_release` once the appeal window closes) and **F3** (only a party can `resolve`) — plus validator payload depth (resolve sees the last ≤5 event payloads, not just counters) and appeal-with-new-evidence. Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve → finalize, all four FINALIZED. |
 
-**Current status:** the audited v3 contract is live at `0x223323CE…` (D3). The v2 contract at `0x8BC5…` is **not** deleted or forked — it stays on-chain, so every transaction hash referenced in this README, `JUDGING.md`, `scripts/e2e_results.md` and `index.html` still resolves to a real record. What changed is only _which_ address new writes go to. Test coverage is 37 (15 off-chain + 22 direct-mode); a full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md). Audit findings **F1, F2 and F3 are still open in the deployed contract** — see Threat model below and Task E in AUDIT.md.
+**Current status:** the v4 contract is live at `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` (D4). The v2 (`0x8BC5…`) and audited v3 (`0x223323CE…`) contracts are **not** deleted or forked — they stay on-chain, so every transaction hash referenced in this README, `JUDGING.md`, `scripts/e2e_results.md` and `index.html` still resolves to a real record. What changed is only _which_ address new writes go to. Test coverage is 46 (17 off-chain + 29 direct-mode); a full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md). Audit findings **F1, F2 and F3 are now fixed in the deployed v4 contract** — see Threat model below and Task E in AUDIT.md.
 
 ## Versioning
 
-On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, superseded), D3 (0x2233…, live). Code generations are numbered v3 (the audited hardening now deployed as D3), v4 (F1/F2/F3 fixes + first roadmap items), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
+On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, superseded), D3 (0x2233…, superseded), D4 (0xfD91…, live). Code generations are numbered v3 (the audited hardening deployed as D3), v4 (F1/F2/F3 fixes + validator payload depth + appeal evidence, now deployed as D4), v5 (product generation). A code generation is not a deployment until it appears in Deployment history.
 
 ## API Reference
 
@@ -174,13 +175,15 @@ On-chain deployments are numbered D1 (0x4bA3…), D2 (0x8BC5…, superseded), D3
 | UNRESOLVABLE         | Too many failed attempts                            | No payout          |
 | TIMEOUT              | No dispute filed                                    | Worker gets paid   |
 
-¹ **Deployed since D3 (`0x223323CE…`, 2026-09-24).** These two verdicts come from the
-hardening work and are covered by the direct-mode test suite; they now execute on-chain.
-The previous deployment (D2, `0x8BC5…`) does not have them, which is why the older
-on-chain evidence stays a continuous D2 record. Concretely: a browser demo deal whose
-anchored case file carries terms other than the deal's own agreement is adjudicated on
-the case file's terms by D2, but comes back AGREEMENT_MISMATCH and is refunded by D3.
-D3's validation run is exactly that path (`scripts/e2e_results.md`).
+¹ **Deployed since D3 (`0x223323CE…`, 2026-09-24) and carried into the current D4
+(`0xfD91f7…`, 2026-09-26).** These two verdicts come from the hardening work and are covered by
+the direct-mode test suite; they execute on-chain. The earlier D2 (`0x8BC5…`) deployment does not
+have them, which is why the older on-chain evidence stays a continuous D2 record. Concretely: a
+deal whose anchored case file carries terms other than the deal's own agreement is adjudicated on
+the case file's terms by D2, but comes back AGREEMENT_MISMATCH and is refunded by D3/D4 — the D3
+validation run exercised exactly that path (`scripts/e2e_results.md`). The D4 browser demo instead
+anchors the repo `happy_path` case file with a matching agreement, so it clears this gate and is
+adjudicated on the merits.
 
 ## Hash Chain
 
@@ -247,9 +250,9 @@ sealing is never a step anyone has to remember.
     ├── contracts/
     │   └── settlement.py         # GenLayer Intelligent Contract
     ├── tests/
-    │   ├── test_flight_recorder.py  # Off-chain tests (12 tests)
+    │   ├── test_flight_recorder.py  # Off-chain tests (14 tests)
     │   ├── test_agreement_hash_canonicalization.py  # Cross-runtime hash tests (3 tests)
-    │   └── direct/test_settlement.py # Direct-mode tests (22 tests)
+    │   └── direct/test_settlement.py # Direct-mode tests (29 tests)
     ├── demo/
     │   ├── scraper_dispute.py
     │   └── code_quality_dispute.py
@@ -263,20 +266,25 @@ sealing is never a step anyone has to remember.
 - Seal access: POST /deals/{id}/seal requires a deal-party actor (body field or X-Actor); strangers cannot freeze an opponent's log.
 - Prompt injection: validators receive evidence inside data tags with instructions to ignore embedded commands; adversarial case files are regression-tested by test_prompt_injection_does_not_change_verdict.
 - Timestamps are service-claimed until anchored; on-chain anchoring provides authoritative order.
-- Live on-chain instance is D3 (`0x223323CE…`): the audited v3 hardening plus audit patches F4 and F6. D2 (`0x8BC5…`) remains on-chain as historical evidence. Findings F1, F2 and F3 are **not** fixed by that deployment and are listed below.
-- **Escrow amount is caller-declared, not value-derived (audit CRITICAL, present in the
-  deployed D3 contract as well as repo HEAD).** `open_deal` takes `amount` and only falls back to
-  `gl.message.value` when it is zero, so a caller can record more escrow than it sent and
-  later withdraw that larger figure from the contract's shared balance. Every first-party
-  caller (browser and both scripts) omits the argument and is unaffected. See AUDIT.md F1.
-- **`unresolvable` is a dead state (audit HIGH).** After three failed resolve attempts the
-  escrow can no longer be moved by any method — `dispute`, `resolve`, `appeal`, `finalize`
-  and `timeout_release` all gate on other statuses — so funds lock instead of settling.
-  `resolve` is also unauthenticated, which lets a third party spend a deal's retry
-  allowance deliberately. See AUDIT.md F2/F3.
-- **`anchor_milestone` overwrites an existing anchor (audit HIGH).** Re-posting a milestone
-  with a _different_ head silently replaces it, so the anchored chain head a case file is
-  checked against is not immutable. See AUDIT.md F4.
+- Live on-chain instance is D4 (`0xfD91f7…`): the audited v3 hardening plus audit patches F4 and F6, and now the F1, F2 and F3 fixes. D2 (`0x8BC5…`) and D3 (`0x223323CE…`) remain on-chain as historical evidence. The findings below are recorded with their current status.
+- **Escrow amount is caller-declared, not value-derived (audit CRITICAL) — FIXED in D4.**
+  Previously `open_deal` took an `amount` and only fell back to `gl.message.value` when it was
+  zero, so a caller could record more escrow than it sent and later withdraw that larger figure
+  from the contract's shared balance. The deployed v4 contract ignores any caller-declared amount
+  and sets escrow to exactly `gl.message.value` (a zero-value open reverts with
+  `open_deal requires payable value`). Fixed in D4 (`0xfD91f7…`); the D2/D3 contracts still on-chain
+  carry the old behaviour. See AUDIT.md F1.
+- **`unresolvable` dead state + unauthenticated `resolve` (audit HIGH) — FIXED in D4.**
+  Previously, after three failed resolve attempts the escrow could no longer be moved by any method
+  (`dispute`, `resolve`, `appeal`, `finalize` and `timeout_release` all gated on other statuses), so
+  funds locked instead of settling; and `resolve` was unauthenticated, letting a third party spend a
+  deal's retry allowance deliberately. In v4, `timeout_release` refunds an `unresolvable` deal once
+  the appeal window closes, and `resolve` requires the sender to be the client or the worker.
+  Fixed in D4 (`0xfD91f7…`). See AUDIT.md F2/F3.
+- **`anchor_milestone` overwrites an existing anchor (audit HIGH) — FIXED since D3.** A re-posted
+  milestone with a _different_ head is now rejected, so the anchored chain head a case file is
+  checked against is immutable once written. Fixed in D3 (`0x223323CE…`) and carried into D4; the D2
+  contract still on-chain overwrites. See AUDIT.md F4.
 - **`chain_integrity.verification` in a case file is self-attested (audit MEDIUM).** The
   contract reads the PASS/FAIL flag out of the same untrusted JSON whose hash it was given,
   so that one check proves the file claims integrity, not that it has any. The on-chain
@@ -298,17 +306,18 @@ Known gaps, stated plainly rather than discovered later:
   require a session token, so a caller proves control of an address before writing.
   The event body itself is still unsigned, so a replayed session could post under
   that address; signing each payload with the actor's key closes the gap.
-- **Appeal with new evidence.** Today `appeal` re-runs consensus over the _same_
-  anchored case file, so it can only produce a different verdict by chance. A real
-  appeal would accept a new case-file hash and re-anchor it.
-- **Redeploy v3 to Studio Next — DONE (D3, `0x223323CE…`, 2026-09-24).** The audited v3
-  hardening plus patches F4 and F6 is now the live contract, validated by a full
+- **Appeal with new evidence — DONE (D4).** `appeal(deal_id, new_case_file_url="")` now accepts an
+  optional new URL; when supplied it updates `case_file_url`, clears `case_file_hash` so the next
+  `resolve` re-fetches and re-anchors, and returns the deal to `disputed`. The agreement/anchor/chain
+  gates still apply, so "new evidence" cannot mean "new terms".
+- **Redeploy v3 to Studio Next — DONE (D3, `0x223323CE…`, 2026-09-24; since superseded by D4).**
+  The audited v3 hardening plus patches F4 and F6 was deployed and validated by a full
   `scripts/e2e_demo.js` lifecycle whose `resolve` returned `AGREEMENT_MISMATCH` and
   refunded the client (`scripts/e2e_results.md`).
-- **Deploy F1, F2 and F3 as D4.** Those three audit findings survived the D3 deployment,
-  so the caller-declared escrow amount, the `unresolvable` dead state and the
-  unauthenticated `resolve` are live behaviour on the contract the browser now writes to.
-  See AUDIT.md Task E for the patch order.
+- **Deploy F1, F2 and F3 as D4 — DONE (`0xfD91f7…`, 2026-09-26).** The three findings that survived
+  D3 are now fixed on-chain: escrow is exactly `gl.message.value` (F1), an `unresolvable` deal is
+  refunded by `timeout_release` once the appeal window closes (F2), and `resolve` requires a party
+  (F3). Validated by a full `scripts/e2e_demo.js` lifecycle. See AUDIT.md Task E.
 - **Hosted evidence API — DONE.** The off-chain recorder now runs on
   PythonAnywhere (`https://hreicher.pythonanywhere.com`), which `index.html`
   targets for `github.io` hosts, so visitors can complete the whole lifecycle
@@ -337,10 +346,10 @@ upgrade them or chase a newer Python before the hackathon deadline.
 The off-chain recorder is served on PythonAnywhere's free tier through an
 a2wsgi WSGI shim.
 
-- **Single worker (required).** Nonces and sessions live in in-process
-  dictionaries (`_nonces`, `_sessions` in `src/main.py`), so the web app must run
-  as a single worker. Multiple workers or a restart would strand a token issued
-  by one process and reject it in another.
+- **Multi-worker safe (single worker no longer required).** Nonces and sessions are persisted
+  in SQLite (`nonces`, `sessions` tables in `src/db.py`) rather than in-process dictionaries, so a
+  token survives a restart and is honoured by any worker sharing the same database file.
+  Regression-tested by `test_session_survives_app_restart`.
 - **Session model.** `POST /api/auth/nonce` issues a single-use nonce (deleted on
   a successful `verify`); `POST /api/auth/verify` recovers the signer with
   `eth_account` and mints a Bearer token valid for **7 days**. The browser keeps

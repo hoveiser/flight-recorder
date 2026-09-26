@@ -204,3 +204,86 @@ generations.
 harness replaces the record it is supposed to append to. The v2 scenario matrix above
 was restored from git after such a rewrite, and this section was added by hand. Any
 future run of the demo will clobber both.
+
+---
+
+# Validation run on v4 contract 0xfD91f7… (2026-09-26)
+
+Contract: `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` (v4, CURRENT)
+Network: GenLayer Studio Next (chain 61997)
+Explorer: <https://explorer-studio-dev.genlayer.com/address/0xfD91f7eDCa653702ACe1F040F4d56d35e674c750>
+Harness: `node scripts/e2e_demo.js` (single run)
+
+v4 is repo-HEAD plus the audit follow-ups shipped in one redeploy: **F1** (escrow is
+exactly `gl.message.value`; the caller-declared `amount` argument is gone), **F2**
+(`timeout_release` recovers an `unresolvable` deal to the client after the appeal
+window), **F3** (`resolve` is party-gated), **G2** (validators now see the last ≤5
+event payloads, not just counters) and **G7** (`appeal` accepts a new case-file URL as
+new evidence). This run uses the same harness as the v3-audit run, so the contrast is
+like-for-like.
+
+## Deal
+
+| Field               | Value                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `external_deal_id`  | `demo_scraper_001`                                                                              |
+| `agreement_hash`    | `aaaaaaaa…` (64 × `a`, the harness placeholder)                                                 |
+| `amount`            | `100000000000000000` wei (0.1 GEN) — taken from the attached value, which is the F1 guarantee    |
+| `worker`            | `0x1111111111111111111111111111111111111111`                                                    |
+| `appeal_window_sec` | `300`                                                                                           |
+| `case_file_url`     | `https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json`                      |
+| `case_file_hash`    | `2828c1d269bd9c80d634131ec107ac69f1cfc3bf1f98d24c112c825c8acd7902`                              |
+| `verdict`           | `AGREEMENT_MISMATCH`                                                                            |
+| `status`            | `refunded`                                                                                      |
+| `payout_status`     | `paid`                                                                                          |
+| Reasoning           | `Case file has no definition_of_done`                                                           |
+| Payout              | Client `0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E` receives `100000000000000000` wei (0.1 GEN) |
+
+## Transactions
+
+| Step | Method      | TX hash                                                              | Execution result       | Explorer                                                                                                               |
+| ---- | ----------- | -------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1    | `open_deal` | `0xc8356fe3f422ccbf157ddaa8a73d14b3598b51057b6ec3d4aa75af49c18a8c19` | `FINISHED_WITH_RETURN` | [View](https://explorer-studio-dev.genlayer.com/tx/0xc8356fe3f422ccbf157ddaa8a73d14b3598b51057b6ec3d4aa75af49c18a8c19) |
+| 2    | `dispute`   | `0x9bf8c33a561c2b23785acd78e49239dba617522a67c0129df6f8fa63fd366085` | `FINISHED_WITH_RETURN` | [View](https://explorer-studio-dev.genlayer.com/tx/0x9bf8c33a561c2b23785acd78e49239dba617522a67c0129df6f8fa63fd366085) |
+| 3    | `resolve`   | `0xa5e3f0f31f31e7ac19afe0795e3c303f7ef5f7fdcc326400a8a535527d2f026e` | `FINISHED_WITH_RETURN` | [View](https://explorer-studio-dev.genlayer.com/tx/0xa5e3f0f31f31e7ac19afe0795e3c303f7ef5f7fdcc326400a8a535527d2f026e) |
+| 4    | `finalize`  | `0xc516bea64ab8bcb136e0f61af24e964a52f5b259a07ca16d897185aa8292b25c` | `FINISHED_WITH_ERROR`  | [View](https://explorer-studio-dev.genlayer.com/tx/0xc516bea64ab8bcb136e0f61af24e964a52f5b259a07ca16d897185aa8292b25c) |
+
+Total fees spent: `300761265600041408` wei.
+
+## Which steps did real work (honest note)
+
+All four transactions reached `FINALIZED`, but finalization is a consensus-lifecycle
+state, not a measure of whether the call changed anything. The execution result and the
+emitted messages — read back with `getTransaction` — tell the real story:
+
+- **`open_deal`, `dispute`, `resolve` → `FINISHED_WITH_RETURN` (real work).**
+  `open_deal` locked exactly `100000000000000000` wei from the attached value (F1:
+  there is no longer a caller-declared `amount` that could inflate it). `dispute`
+  anchored the case-file URL and hash. `resolve` ran the evidence gate, found the
+  fetched `package.json` carries no `definition_of_done`, returned `AGREEMENT_MISMATCH`
+  and **emitted the refund transfer** — its message list is
+  `[{ recipient: 0xE68c…c95E, value: 100000000000000000 }]`. This is the transaction
+  that actually moved the escrow.
+- **`finalize` → `FINISHED_WITH_ERROR` (no work).** Its message list is empty (`[]`).
+  `resolve` had already driven the deal to the terminal `refunded` state and paid the
+  client, so `finalize`'s guard (`status` must be `adjudicated`) raised `Not adjudicated`
+  and execution reverted. `get_deal(1)` is byte-identical before and after this call and
+  `get_payouts()` holds exactly one entry. The fourth transaction is on-chain and paid a
+  fee, but it moved no funds and changed no state.
+
+This is the same shape as the v3-audit run: the evidence refund happens inside
+`resolve`, and `finalize` is a no-op on an already-settled deal.
+
+## What this run does and does not prove
+
+- **It does prove F1 on-chain.** The stored `amount` equals the attached value
+  (`100000000000000000` wei) with no caller-supplied amount in the call, and the refund
+  paid back exactly that value.
+- **It does prove** the agreement gate still routes a term-less case file to a client
+  refund on the v4 address, and that a deal can be opened, disputed, resolved and
+  drained of escrow against it.
+- **It does not exercise F2, F3, G2 or G7.** The harness never drives a deal to
+  `unresolvable` (F2), never calls `resolve` from a non-party (F3), disputes a
+  `package.json` with no events so the new payload depth is never reached (G2), and
+  never appeals (G7). Those four are covered by the direct-mode suite in
+  `tests/direct/test_settlement.py`, not by this run.

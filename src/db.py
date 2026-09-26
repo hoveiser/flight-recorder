@@ -59,6 +59,23 @@ def init_db():
         """
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS nonces (
+            nonce TEXT PRIMARY KEY,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            address TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_events_deal ON events(deal_id, id)"
     )
     conn.commit()
@@ -218,3 +235,64 @@ def _row_to_event(row) -> Event:
         event_hash=row["event_hash"],
         timestamp=datetime.fromisoformat(row["timestamp"]),
     )
+
+
+# ---------------------------------------------------------------------------
+# Auth persistence (STEP 9 / G5): nonces and sessions live in SQLite rather
+# than in process-memory dicts. Expiry is stored as an ISO-8601 UTC string and
+# evaluated by the caller in main.py, so the "missing vs expired" 401 messages
+# are unchanged. Single-use nonces are enforced by delete-on-consume.
+# ---------------------------------------------------------------------------
+
+
+def store_nonce(nonce: str, expires_at: datetime) -> None:
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO nonces (nonce, expires_at) VALUES (?, ?)",
+        (nonce, expires_at.isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_nonce(nonce: str) -> Optional[datetime]:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT expires_at FROM nonces WHERE nonce = ?", (nonce,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return datetime.fromisoformat(row["expires_at"])
+
+
+def delete_nonce(nonce: str) -> None:
+    """Consume a nonce so it cannot be replayed. Idempotent."""
+    conn = get_conn()
+    conn.execute("DELETE FROM nonces WHERE nonce = ?", (nonce,))
+    conn.commit()
+    conn.close()
+
+
+def store_session(token: str, address: str, expires_at: datetime) -> None:
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO sessions (token, address, expires_at) VALUES (?, ?, ?)",
+        (token, address, expires_at.isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session(token: str) -> Optional[dict]:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT address, expires_at FROM sessions WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {
+        "address": row["address"],
+        "expires_at": datetime.fromisoformat(row["expires_at"]),
+    }

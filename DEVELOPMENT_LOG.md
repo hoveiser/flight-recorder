@@ -1,5 +1,41 @@
 # Flight Recorder — Development Log
 
+### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
+
+- Deployed the **v4** source as **D4**: `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750`
+  on chain 61997 (2026-09-26), superseding D3 (`0x223323CE…`). D2 (`0x8BC5…`) and D3
+  stay on-chain, so every previously documented transaction hash still resolves.
+- Closed the three audit findings that survived D3:
+  - **F1 (critical):** `open_deal` no longer trusts a caller-declared `amount`; the
+    escrow is exactly `gl.message.value`, and a zero-value open reverts with
+    `open_deal requires payable value`.
+  - **F2 (high):** `unresolvable` is no longer a dead state — once the appeal window
+    elapses, `timeout_release` refunds the client (status `refunded`, payout `paid`).
+  - **F3 (high):** `resolve` now requires `gl.message.sender` to be the client or the
+    worker, so a third party cannot burn a deal's retry allowance.
+- **G2 — validator payload depth:** the resolve prompt now carries the last up-to-5
+  event payloads (each truncated to ~200 chars) inside the existing `<data>` tags,
+  alongside the counters, so validators judge the actual evidence, not just counts.
+- **G7 — appeal with new evidence:** `appeal(deal_id, new_case_file_url="")` accepts an
+  optional new URL; when supplied it updates `case_file_url`, clears `case_file_hash`
+  so the next `resolve` re-fetches and re-anchors, and returns the deal to `disputed`.
+  The agreement/anchor/chain gates still apply, so "new evidence" can't mean "new terms".
+- **G5 — off-chain session persistence:** nonces and sessions moved from in-process
+  dicts to SQLite (`nonces`, `sessions` tables). The single-worker requirement is gone;
+  a token now survives a restart and a second worker. Regression-tested by
+  `test_session_survives_app_restart` and `test_auth_flow_persists_session_and_single_use_nonce`.
+- Validated D4 with one `node scripts/e2e_demo.js` run: open_deal → dispute → resolve →
+  finalize, all four transactions FINALIZED. `resolve` returned **AGREEMENT_MISMATCH**
+  and refunded the client (the harness disputes a case file with no `definition_of_done`,
+  i.e. the DISAGREEMENT path); `finalize` then finished in error and could not double-pay,
+  confirming the refund already settled inside `resolve`. Hashes and the honest work-note
+  are appended to `scripts/e2e_results.md`.
+- Site + docs synced to D4: `index.html` address constants and explorer links, the §08
+  dispute notice, and the site `DOD` now equals `demo/case_files/happy_path.json`'s
+  `definition_of_done` (so the browser demo clears the agreement gate). README/JUDGING
+  updated: F1–F3 fixed, session persistence done, counts synced.
+- Suite: **46 passed** (17 off-chain + 29 direct-mode).
+
 ### Sep 24 — Audited contract deployed (D3) + docs/site pointer sync
 
 - Deployed the audited v3 source (repo HEAD plus audit patches **F4** and **F6**) as

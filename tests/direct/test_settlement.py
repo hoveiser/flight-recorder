@@ -113,15 +113,28 @@ def _mock_case(vm, body, status=200):
 
 
 def _open(c, vm, client, worker):
-    """Open a deal whose agreement hash really matches the case file terms."""
+    """Open a deal whose agreement hash really matches the case file terms.
+
+    F1: open_deal no longer accepts a caller-declared amount — the escrow is
+    exactly the attached payable value. Direct mode syncs vm.value into
+    gl.message.value, so the helper sets it for the open_deal call and clears it
+    again afterwards, leaving the later non-payable calls (dispute/resolve/
+    finalize) carrying no value just as they do on-chain.
+    """
     vm.sender = client
-    return c.open_deal("deal1", AGREEMENT_HASH, to_hex(worker), 120, VALUE)
+    vm.value = VALUE
+    try:
+        return c.open_deal("deal1", AGREEMENT_HASH, to_hex(worker), 120)
+    finally:
+        vm.value = 0
 
 
 def test_open_deal_locks_funds(direct_vm, direct_deploy, direct_alice, direct_bob):
     c = direct_deploy(CONTRACT_PATH)
     direct_vm.sender = direct_alice
-    did = c.open_deal("deal1", AGREEMENT_HASH, to_hex(direct_bob), 120, VALUE)
+    direct_vm.value = VALUE
+    did = c.open_deal("deal1", AGREEMENT_HASH, to_hex(direct_bob), 120)
+    direct_vm.value = 0
     d = json.loads(c.get_deal(did))
     assert d["status"] == "funded"
     assert d["amount"] == VALUE
@@ -509,7 +522,9 @@ def test_prompt_injection_does_not_change_verdict(direct_vm, direct_deploy, dire
     def resolve_verdict(external_id: str, body: str, llm_verdict: str, reasoning: str) -> str:
         direct_vm.clear_mocks()
         direct_vm.sender = direct_alice
-        did = c.open_deal(external_id, AGREEMENT_HASH, to_hex(direct_bob), 120, VALUE)
+        direct_vm.value = VALUE
+        did = c.open_deal(external_id, AGREEMENT_HASH, to_hex(direct_bob), 120)
+        direct_vm.value = 0
         _mock_case(direct_vm, body)
         mock_json_llm(direct_vm, r"adjudicator", {"verdict": llm_verdict, "reasoning": reasoning})
         c.dispute(did, CASE_FILE_URL, _sha(body))
@@ -527,3 +542,177 @@ def test_prompt_injection_does_not_change_verdict(direct_vm, direct_deploy, dire
         "inj_payload_ok", injected_case(1000, inject_refund), "APPROVED", "Delivered"
     )
     assert injected_approved == baseline_approved == "APPROVED"
+
+
+# ---------------------------------------------------------------------------
+# v4 fixes: F1 (escrow is the attached value), F2 (unresolvable recovers),
+# F3 (resolve is authenticated), G2 (validators see event payloads) and
+# G7 (an appeal may file new evidence).
+# ---------------------------------------------------------------------------
+
+
+def test_open_deal_requires_payable_value(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """F1: a zero-value open_deal is rejected instead of opening an unfunded deal.
+
+    The escrow can only come from the attached payable value now that the
+    caller-declared `amount` argument is gone, so there is no way to open a deal
+    that promises a payout the contract never received.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    direct_vm.sender = direct_alice
+    direct_vm.value = 0
+    with direct_vm.expect_revert("open_deal requires payable value"):
+        c.open_deal("deal1", AGREEMENT_HASH, to_hex(direct_bob), 120)
+
+
+def test_open_deal_escrow_equals_attached_value(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """F1: the stored amount tracks gl.message.value exactly, whatever it is."""
+    c = direct_deploy(CONTRACT_PATH)
+    direct_vm.sender = direct_alice
+    odd_value = 7 * 10**18 + 12345
+    direct_vm.value = odd_value
+    did = c.open_deal("deal1", AGREEMENT_HASH, to_hex(direct_bob), 120)
+    direct_vm.value = 0
+    d = json.loads(c.get_deal(did))
+    assert d["amount"] == odd_value
+
+
+def test_resolve_requires_party(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """F3: a stranger cannot drive adjudication (or force a deal unresolvable)."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    # No LLM mock on purpose: the party gate must reject before any AI round.
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert("Only parties can resolve"):
+        c.resolve(did)
+    # The deal is untouched: still disputed, no retry consumed, no payout.
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "disputed"
+    assert d["fetch_failures"] == 0
+    assert json.loads(c.get_payouts()) == []
+
+
+def test_validator_prompt_includes_event_payloads(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """G2: the adjudicator prompt carries the actual event payloads, not just counts.
+
+    The LLM mock is keyed on a marker that only exists inside an event payload.
+    If the payloads were dropped from the prompt the mock would never match,
+    exec_prompt would raise, and resolve would fall through to a retry instead of
+    APPROVED — so reaching APPROVED proves the evidence informed the round.
+    """
+    marker = "UNIQUE_PAYLOAD_MARKER_9f3a"
+    body = json.dumps({
+        "deal_id": "deal1",
+        "definition_of_done": DOD,
+        "events": [
+            {"id": 1, "event_type": "DELIVERY", "payload": {"note": marker, "valid": 1000}},
+        ],
+        "disputes": [{"party": "client", "claim": "short"}],
+        "chain_integrity": {"verification": "PASS", "last_hash": CHAIN_HEAD},
+    })
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, body)
+    mock_json_llm(direct_vm, marker, {"verdict": "APPROVED", "reasoning": "marker seen"})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, _sha(body))
+    c.resolve(did)
+    d = json.loads(c.get_deal(did))
+    assert d["verdict"] == "APPROVED"
+    assert d["status"] == "adjudicated"
+
+
+def test_appeal_with_new_evidence_updates_case_file(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """G7: an appeal may file new evidence at a fresh URL.
+
+    The new URL replaces case_file_url and the stale digest is cleared, so the
+    next resolve re-fetches the new file and re-anchors its own digest instead of
+    re-judging the exact bytes that just lost.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Only 500 delivered"})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.resolve(did)
+    assert json.loads(c.get_deal(did))["status"] == "adjudicated"
+
+    new_url = "https://example.com/appeal-case-file.json"
+    direct_vm.sender = direct_bob  # worker lost, so the worker appeals
+    c.appeal(did, new_url)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "disputed"
+    assert d["appeals_used"] == 1
+    assert d["case_file_url"] == new_url
+    assert d["case_file_hash"] is None, "stale digest must be cleared so resolve re-fetches"
+
+    # Re-adjudicate against the new evidence. gltest matches the first registered
+    # mock, so clear the round-one mocks before serving the new file.
+    direct_vm.clear_mocks()
+    _mock_case(direct_vm, FULFILLED_CONTENT)
+    mock_json_llm(direct_vm, r"adjudicator", {"verdict": "APPROVED", "reasoning": "1000 records delivered"})
+    c.resolve(did)  # the worker is still a party, so F3 lets it resolve
+    d = json.loads(c.get_deal(did))
+    assert d["verdict"] == "APPROVED"
+    assert d["status"] == "adjudicated"
+    assert d["reasoning"].startswith("FINAL appeal")
+    # The new evidence was re-anchored to its own digest, not the stale one.
+    assert d["case_file_hash"] == FULFILLED_HASH
+
+
+def test_appeal_without_url_keeps_old_case_file(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """G7: omitting the new URL preserves the previous re-judge-the-same-bytes path."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Only 500 delivered"})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.resolve(did)
+
+    direct_vm.sender = direct_bob
+    c.appeal(did)  # no new evidence
+    d = json.loads(c.get_deal(did))
+    assert d["case_file_url"] == CASE_FILE_URL
+    assert d["case_file_hash"] == CASE_FILE_HASH, "the anchored digest must survive an empty appeal"
+    assert d["status"] == "disputed"
+
+
+def test_unresolvable_recovers_via_timeout_release(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """F2: an unresolvable deal is no longer a dead end.
+
+    After MAX_RESOLVE_ATTEMPTS transient failures the escrow used to be locked in
+    the contract forever. Once the appeal window has elapsed, timeout_release
+    refunds the client — never the worker, because an unreachable case file is
+    not evidence that the worker failed.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    for _ in range(3):
+        c.resolve(did)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "unresolvable"
+    assert json.loads(c.get_payouts()) == [], "unresolvable alone must not pay anyone"
+
+    # Before the appeal window elapses the escrow is still held.
+    with direct_vm.expect_revert("Appeal window still open"):
+        c.timeout_release(did)
+
+    # Backdate past created_at + appeal_window_sec so recovery is allowed.
+    _backdate_deal(c, did, seconds=d["appeal_window_sec"] + 1)
+    c.timeout_release(did)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "refunded"
+    assert d["verdict"] == "UNRESOLVABLE_RECOVERED"
+    assert d["payout_status"] == "paid"
+    payouts = json.loads(c.get_payouts())
+    assert len(payouts) == 1
+    assert payouts[0]["to"].lower() == to_hex(direct_alice).lower(), "the client, not the worker, is refunded"
+    assert payouts[0]["amount"] == VALUE

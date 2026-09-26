@@ -14,7 +14,6 @@ os.environ["FLIGHT_RECORDER_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 from fastapi.testclient import TestClient
 from src.main import app
 from src import db
-from src import main as main_mod
 
 TEST_SESSION = "test-session"
 
@@ -33,10 +32,13 @@ class SessionClient(TestClient):
 @pytest.fixture
 def client():
     db.init_db()
-    main_mod._sessions[TEST_SESSION] = {
-        "address": "agentA",
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
-    }
+    # Seed the shared test session through the same SQLite-backed store the app
+    # uses, so tests exercise the real persistence path and survive a reload.
+    db.store_session(
+        TEST_SESSION,
+        "agentA",
+        datetime.now(timezone.utc) + timedelta(days=1),
+    )
     return SessionClient(app)
 
 
