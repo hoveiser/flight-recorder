@@ -44,6 +44,24 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   machine but has no working DNS for `pip`, so the direct suite cannot be installed
   or run locally this round; CI on Ubuntu is the environment of record for those
   53 tests.
+- **Phase 3, callers.** `demo/signed_client.py` and `scripts/event_signing.js` are the
+  two client implementations of the signed contract (same canonical message, same
+  digest rules), and both demos, `scripts/e2e_demo.js`, `scripts/run_live_scenarios.js`
+  and the browser page now sign every event with a throwaway key and pass the sealed
+  head to `dispute`. `index.html` seals the visitor's own log and hashes the case file
+  its API serves, so the flow anchors without any extra step; it only falls back to the
+  published happy-path file when there is no session, and the fallback refuses to post
+  a dispute whose head is not 64 lowercase hex.
+- **Published evidence regenerated.** The v4 `happy_path.json` was hand-written and
+  declares no chain head, so D5 could not anchor it. `demo/make_case_file.py` now
+  builds the file from a real recorder run (two random keys, discarded afterwards, so
+  the published bytes can never be extended by anybody) and prints the SHA-256 of the
+  published bytes, which is what `index.html`'s `EXPECTED_HASH` and a live dispute must
+  both use. The writer forces `newline=""`: GitHub serves the committed blob, and with
+  `core.autocrlf=true` a text-mode write would put CRLF on disk while the blob stays
+  LF, which silently produces two different digests for "the same" file. Verified: the
+  staged blob hashes to `0ae7f1ad7eca720eaefd9e651e9c60fe258648ac6a19cc58e4d2c896dff12908`,
+  the same number Python, Node and the browser compute.
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 

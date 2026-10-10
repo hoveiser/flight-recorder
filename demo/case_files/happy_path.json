@@ -1,55 +1,136 @@
 {
+  "agreement_hash": "056b9e2e236328d4d5b269b5d35e5f94017ee4dcf238e056c943caf96857dae4",
+  "chain_integrity": {
+    "deal_id": "demo_happy_002",
+    "events": 4,
+    "genesis_hash": "1a7bbdb3f23345c8a752e654abe8808ac3428b2db3434d8a3ec2a3fab4110d3d",
+    "hash_version": 2,
+    "last_hash": "33d588cbd07c6949b41f87cce222c9dcce66bebb4cae5130e1523bab79643771",
+    "signature_status": "PASS",
+    "signatures": {
+      "events": 4,
+      "failed": 0,
+      "legacy": 0,
+      "signed": 4
+    },
+    "verification": "PASS"
+  },
+  "created_at": "2026-10-10T19:33:18.858840+00:00",
   "deal_id": "demo_happy_002",
   "definition_of_done": {
-    "success_criteria": "Deliver 1000 validated product records with no duplicate IDs and a complete summary report",
-    "acceptance": "Client verifies the delivered dataset and report"
+    "acceptance": "Client verifies the delivered dataset and report",
+    "success_criteria": "Deliver 1000 validated product records with no duplicate IDs and a complete summary report"
   },
-  "parties": {
-    "client": "0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E",
-    "worker": "0x1111111111111111111111111111111111111111"
-  },
-  "agreement_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "disputes": [],
   "events": [
     {
-      "id": 1,
-      "actor": "client",
+      "actor": "0x62F4e023b1d1e68a86E153829704610C007175Fb",
+      "client_timestamp": "2026-10-10T19:33:20.892066+00:00",
+      "event_hash": "1a7bbdb3f23345c8a752e654abe8808ac3428b2db3434d8a3ec2a3fab4110d3d",
       "event_type": "REQUEST",
+      "id": 1,
       "payload": {
-        "request": "Collect and validate 1000 product records"
-      }
+        "request": "Collect and validate 1000 product records",
+        "seq": 0
+      },
+      "payload_hash": "8874b2d0795754ec8a0a06894a6df8aa95e3cf6a51ed1abeebf5c006ccb151c9",
+      "previous_event_hash": "GENESIS",
+      "sig_version": 2,
+      "signature": "5c8d01c0c5a072aa1213a81869a67e5728ee3a51f33fb2d0b36e86380995d4af75e58486f8d8c626852d881fe2912e6d763a5343d1b2faf0c20f329d7b6e54001c",
+      "signature_status": "PASS",
+      "signed_fields": {
+        "client_timestamp": "2026-10-10T19:33:20.892066+00:00",
+        "deal_id": "demo_happy_002",
+        "domain": "flight-recorder-event-v1",
+        "event_type": "REQUEST",
+        "payload_hash": "8874b2d0795754ec8a0a06894a6df8aa95e3cf6a51ed1abeebf5c006ccb151c9",
+        "previous_event_hash": "GENESIS"
+      },
+      "timestamp": "2026-10-10T19:33:27.071949+00:00"
     },
     {
-      "id": 2,
-      "actor": "worker",
+      "actor": "0xcaeC70f52EFB07D6334C6CA9D24C869146Eb5C1F",
+      "client_timestamp": "2026-10-10T19:33:29.121254+00:00",
+      "event_hash": "c55fe21bf0f1673eb09de172e3ab200712b4d7cf70e0035f5d5fdc2c3716d912",
       "event_type": "RESPONSE",
+      "id": 2,
       "payload": {
         "accepted": true,
-        "estimated_records": 1000
-      }
+        "estimated_records": 1000,
+        "seq": 1
+      },
+      "payload_hash": "054e4129192aa16368eaa3b675cc839fda3dd4b3ec8b8339b08dfc346c3e99f7",
+      "previous_event_hash": "1a7bbdb3f23345c8a752e654abe8808ac3428b2db3434d8a3ec2a3fab4110d3d",
+      "sig_version": 2,
+      "signature": "949f99b75aaf8c7035b11d95db7c5625aef96b06b82096e9612d5982b1d87a93024fac62ceba40246e845f8d130b26019e1722a18efd392f679b47792eee71451c",
+      "signature_status": "PASS",
+      "signed_fields": {
+        "client_timestamp": "2026-10-10T19:33:29.121254+00:00",
+        "deal_id": "demo_happy_002",
+        "domain": "flight-recorder-event-v1",
+        "event_type": "RESPONSE",
+        "payload_hash": "054e4129192aa16368eaa3b675cc839fda3dd4b3ec8b8339b08dfc346c3e99f7",
+        "previous_event_hash": "1a7bbdb3f23345c8a752e654abe8808ac3428b2db3434d8a3ec2a3fab4110d3d"
+      },
+      "timestamp": "2026-10-10T19:33:35.310968+00:00"
     },
     {
-      "id": 3,
-      "actor": "worker",
+      "actor": "0xcaeC70f52EFB07D6334C6CA9D24C869146Eb5C1F",
+      "client_timestamp": "2026-10-10T19:33:37.339442+00:00",
+      "event_hash": "cbdeee80028733debd452d54e22451ee2eb7fdefc24a4ed37c578060b6e5fe13",
       "event_type": "DELIVERY",
+      "id": 3,
       "payload": {
-        "records_delivered": 1000,
         "duplicate_ids": 0,
+        "records_delivered": 1000,
+        "seq": 2,
         "summary_report": "complete"
-      }
+      },
+      "payload_hash": "d7233a42aeaa1a0f1d910e7dbe52dc6bfa7c44097a753f63626470612084f0ab",
+      "previous_event_hash": "c55fe21bf0f1673eb09de172e3ab200712b4d7cf70e0035f5d5fdc2c3716d912",
+      "sig_version": 2,
+      "signature": "370e6b8d7c53941cbb8aa2e6bfceb8756c55b4254e9e1e4e859ac5e60879c4d27e604aa4756f8b745569be7cbd6216864b6437915a69e3d8419914c7cf78eca71c",
+      "signature_status": "PASS",
+      "signed_fields": {
+        "client_timestamp": "2026-10-10T19:33:37.339442+00:00",
+        "deal_id": "demo_happy_002",
+        "domain": "flight-recorder-event-v1",
+        "event_type": "DELIVERY",
+        "payload_hash": "d7233a42aeaa1a0f1d910e7dbe52dc6bfa7c44097a753f63626470612084f0ab",
+        "previous_event_hash": "c55fe21bf0f1673eb09de172e3ab200712b4d7cf70e0035f5d5fdc2c3716d912"
+      },
+      "timestamp": "2026-10-10T19:33:39.407757+00:00"
     },
     {
-      "id": 4,
-      "actor": "client",
+      "actor": "0x62F4e023b1d1e68a86E153829704610C007175Fb",
+      "client_timestamp": "2026-10-10T19:33:41.470653+00:00",
+      "event_hash": "33d588cbd07c6949b41f87cce222c9dcce66bebb4cae5130e1523bab79643771",
       "event_type": "VALIDATION",
+      "id": 4,
       "payload": {
-        "success": true,
         "records_accepted": 1000,
+        "seq": 3,
+        "success": true,
         "validation_note": "All acceptance criteria fulfilled"
-      }
+      },
+      "payload_hash": "9b6a2a681ecad84b6704e3d8c58b4912b84d03bd45bbc1857c111a67c7b8cff4",
+      "previous_event_hash": "cbdeee80028733debd452d54e22451ee2eb7fdefc24a4ed37c578060b6e5fe13",
+      "sig_version": 2,
+      "signature": "fece5b2399d9f7e5d6a14ae3ba1bff64656a6a84d9e3a5ebebc59caacbed8723270dcf09815b2f9c54e4ba7020dead072a76217b55d05a5b1c77a0306328cb051c",
+      "signature_status": "PASS",
+      "signed_fields": {
+        "client_timestamp": "2026-10-10T19:33:41.470653+00:00",
+        "deal_id": "demo_happy_002",
+        "domain": "flight-recorder-event-v1",
+        "event_type": "VALIDATION",
+        "payload_hash": "9b6a2a681ecad84b6704e3d8c58b4912b84d03bd45bbc1857c111a67c7b8cff4",
+        "previous_event_hash": "cbdeee80028733debd452d54e22451ee2eb7fdefc24a4ed37c578060b6e5fe13"
+      },
+      "timestamp": "2026-10-10T19:33:43.531302+00:00"
     }
   ],
-  "chain_integrity": {
-    "verification": "PASS",
-    "events": 4
-  }
+  "parties": [
+    "0x62F4e023b1d1e68a86E153829704610C007175Fb",
+    "0xcaeC70f52EFB07D6334C6CA9D24C869146Eb5C1F"
+  ]
 }
