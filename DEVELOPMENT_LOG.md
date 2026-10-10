@@ -62,6 +62,18 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   LF, which silently produces two different digests for "the same" file. Verified: the
   staged blob hashes to `0ae7f1ad7eca720eaefd9e651e9c60fe258648ac6a19cc58e4d2c896dff12908`,
   the same number Python, Node and the browser compute.
+- **Phase 4, CI.** Branch pushed and PR #6 opened. The first two runs were red on all
+  53 direct tests with `FileNotFoundError: runner py-genlayer:5jycge... not under
+  trees-v2/v0.6.0-rc9`: `genlayer-test` resolves the GenVM release as "the latest
+  GitHub release" unless `GENVM_VERSION` is set, and `genvm-manager` v0.6.0-rc9
+  (published Oct 8) no longer ships the runner hash that `contracts/settlement.py`
+  pins in its `Depends` header. The suite had passed on Sep 26 because the latest
+  release then was v0.6.0-rc6. The fix pins `GENVM_VERSION=v0.6.0-rc6` on the CI test
+  step; the contract header pin is untouched, so D5 runs on the same runner as D4 and
+  no dependency version changed. Read from the package source that `resolve_version()`
+  returns the env value before it queries the network and that the pytest plugin leaves
+  `sdk_version` unset, so nothing overrides it.
+  Green on `cded8aa`: **88 passed, 0 failed** in 27.59s (53 direct-mode, 35 off-chain).
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 
