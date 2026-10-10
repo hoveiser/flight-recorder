@@ -42,6 +42,9 @@ def init_db():
             previous_event_hash TEXT NOT NULL,
             event_hash TEXT NOT NULL,
             timestamp TEXT NOT NULL,
+            signature TEXT,
+            client_timestamp TEXT,
+            sig_version INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (deal_id) REFERENCES deals(deal_id)
         )
         """
@@ -78,6 +81,9 @@ def init_db():
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_events_deal ON events(deal_id, id)"
     )
+    # A database that predates event signing gains the columns here, so the
+    # upgrade happens at startup rather than lazily on the first read.
+    _ensure_event_signature_columns(conn)
     conn.commit()
     conn.close()
 
@@ -92,6 +98,31 @@ def _ensure_sealed_column(conn):
     columns = {row[1] for row in conn.execute("PRAGMA table_info(deals)")}
     if "sealed" not in columns:
         conn.execute("ALTER TABLE deals ADD COLUMN sealed INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
+
+def _ensure_event_signature_columns(conn):
+    """Add the signing columns to databases created before events were signed.
+
+    Idempotent, and deliberately additive: existing rows keep sig_version 1 with
+    a NULL signature and are still verified with the hash formula that produced
+    them. Nothing is rewritten, so an old log's head hash does not move under
+    the upgrade.
+    """
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    added = False
+    if "signature" not in columns:
+        conn.execute("ALTER TABLE events ADD COLUMN signature TEXT")
+        added = True
+    if "client_timestamp" not in columns:
+        conn.execute("ALTER TABLE events ADD COLUMN client_timestamp TEXT")
+        added = True
+    if "sig_version" not in columns:
+        conn.execute(
+            "ALTER TABLE events ADD COLUMN sig_version INTEGER NOT NULL DEFAULT 1"
+        )
+        added = True
+    if added:
         conn.commit()
 
 
@@ -144,10 +175,11 @@ def seal_deal(deal_id: str) -> bool:
 def save_event(event: Event):
     conn = get_conn()
     conn.isolation_level = None
+    _ensure_event_signature_columns(conn)
     conn.execute("BEGIN IMMEDIATE")
     try:
         conn.execute(
-            "INSERT INTO events (deal_id, actor, event_type, payload, metadata, payload_hash, previous_event_hash, event_hash, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO events (deal_id, actor, event_type, payload, metadata, payload_hash, previous_event_hash, event_hash, timestamp, signature, client_timestamp, sig_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 event.deal_id,
                 event.actor,
@@ -158,6 +190,9 @@ def save_event(event: Event):
                 event.previous_event_hash,
                 event.event_hash,
                 event.timestamp.isoformat(),
+                event.signature,
+                event.client_timestamp,
+                event.sig_version,
             ),
         )
         conn.commit()
@@ -170,6 +205,7 @@ def save_event(event: Event):
 
 def get_last_event(deal_id: str) -> Optional[Event]:
     conn = get_conn()
+    _ensure_event_signature_columns(conn)
     row = conn.execute(
         "SELECT * FROM events WHERE deal_id = ? ORDER BY id DESC LIMIT 1",
         (deal_id,),
@@ -182,6 +218,7 @@ def get_last_event(deal_id: str) -> Optional[Event]:
 
 def get_events(deal_id: str) -> list[Event]:
     conn = get_conn()
+    _ensure_event_signature_columns(conn)
     rows = conn.execute(
         "SELECT * FROM events WHERE deal_id = ? ORDER BY id ASC", (deal_id,)
     ).fetchall()
@@ -223,6 +260,7 @@ def get_disputes(deal_id: str) -> list[Dispute]:
 
 
 def _row_to_event(row) -> Event:
+    keys = row.keys()
     return Event(
         id=row["id"],
         deal_id=row["deal_id"],
@@ -234,6 +272,9 @@ def _row_to_event(row) -> Event:
         previous_event_hash=row["previous_event_hash"],
         event_hash=row["event_hash"],
         timestamp=datetime.fromisoformat(row["timestamp"]),
+        signature=row["signature"] if "signature" in keys else None,
+        client_timestamp=row["client_timestamp"] if "client_timestamp" in keys else None,
+        sig_version=(row["sig_version"] if "sig_version" in keys else 1) or 1,
     )
 
 

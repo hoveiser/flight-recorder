@@ -15,10 +15,13 @@ from .hash_chain import (
     compute_payload_hash,
     compute_event_hash,
     compute_agreement_hash,
+    canonical_event_message,
+    EVENT_SIGN_DOMAIN,
+    EVENT_HASH_VERSION_SIGNED,
     GENESIS,
 )
 
-app = FastAPI(title="Flight Recorder", version="0.2.0")
+app = FastAPI(title="Flight Recorder", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +35,14 @@ db.init_db()
 # delete_nonce and db.store_session/get_session), not in process memory. A
 # worker restart — or a second uvicorn worker — therefore no longer drops
 # active agent sessions, and a consumed nonce stays consumed across processes.
+
+# How far the client-supplied event timestamp may drift from server time. Both
+# bounds are enforced: without the past bound a signed event from last month
+# could be replayed into the chain today, and without the future bound a party
+# could date its own evidence ahead of everything else and keep doing it for
+# ever. A window with only a ceiling is not a window.
+EVENT_TIMESTAMP_MAX_PAST_SECONDS = 900
+EVENT_TIMESTAMP_MAX_FUTURE_SECONDS = 300
 
 _deal_write_locks: dict[str, threading.Lock] = {}
 _deal_write_locks_guard = threading.Lock()
@@ -65,6 +76,80 @@ def _require_session(authorization: Optional[str]) -> str:
     if record is None or record["expires_at"] < now:
         raise HTTPException(401, "Invalid or expired session")
     return record["address"]
+
+
+def _parse_client_timestamp(raw: str) -> datetime:
+    """Parse the signed client timestamp; it must be an absolute UTC instant.
+
+    A naive timestamp has no agreed meaning (is it the server's zone? the
+    caller's?), and the drift window would then depend on where the request was
+    built. Rejecting it is the conservative reading.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        raise HTTPException(400, "client_timestamp is required for signed events")
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        raise HTTPException(400, "client_timestamp is not ISO-8601")
+    if parsed.tzinfo is None:
+        raise HTTPException(400, "client_timestamp must include a UTC offset")
+    return parsed.astimezone(timezone.utc)
+
+
+def _verify_event_signature(
+    event_in: EventCreate,
+    deal: Deal,
+    previous_hash: str,
+    payload_hash: str,
+    session_address: str,
+) -> datetime:
+    """Bind the write to a key the party actually controls, and return the time
+    that key asserted.
+
+    Three separate things must line up, and each one closes a different attack:
+    the recovered signer must be the claimed actor (otherwise the actor field is
+    a self-report), the actor must be a party to this deal (otherwise a key that
+    is valid somewhere else is being used here), and the actor must be the
+    authenticated session (otherwise a session logs writes onto someone else's
+    record). The signed message carries the deal id, the previous hash, the
+    event type, the payload digest and the client timestamp, so replaying a
+    signature into another deal or another chain position changes what is being
+    recovered and fails the first check.
+    """
+    if not event_in.signature:
+        raise HTTPException(400, "signature is required: events must be signed by their actor")
+    client_ts = _parse_client_timestamp(event_in.client_timestamp or "")
+
+    now = datetime.now(timezone.utc)
+    if client_ts > now + timedelta(seconds=EVENT_TIMESTAMP_MAX_FUTURE_SECONDS):
+        raise HTTPException(400, "client_timestamp is too far in the future")
+    if client_ts < now - timedelta(seconds=EVENT_TIMESTAMP_MAX_PAST_SECONDS):
+        raise HTTPException(400, "client_timestamp is too old")
+
+    message = canonical_event_message(
+        deal_id=event_in.deal_id,
+        previous_event_hash=previous_hash,
+        event_type=event_in.event_type,
+        payload_hash=payload_hash,
+        client_timestamp=event_in.client_timestamp.strip(),
+    )
+    try:
+        recovered = Account.recover_message(
+            encode_defunct(text=message), signature=event_in.signature
+        )
+    except Exception:
+        raise HTTPException(400, "signature is not a valid EIP-191 personal_sign")
+
+    if recovered.lower() != event_in.actor.lower():
+        raise HTTPException(403, "signature does not match the claimed actor")
+    if event_in.actor.lower() not in {p.lower() for p in deal.parties}:
+        raise HTTPException(403, "actor is not a party to this deal")
+    if event_in.actor.lower() != session_address.lower():
+        raise HTTPException(403, "actor does not match the authenticated session")
+    return client_ts
 
 
 @app.post("/api/auth/nonce")
@@ -119,7 +204,7 @@ def get_deal(deal_id: str):
 
 @app.post("/events", response_model=Event)
 def record_event(event_in: EventCreate, authorization: Optional[str] = Header(default=None)):
-    _require_session(authorization)
+    session_address = _require_session(authorization)
     with _deal_write_lock(event_in.deal_id):
         deal = db.get_deal(event_in.deal_id)
         if deal is None:
@@ -135,7 +220,10 @@ def record_event(event_in: EventCreate, authorization: Optional[str] = Header(de
         previous_hash = last.event_hash if last else GENESIS
 
         payload_hash = compute_payload_hash(event_in.payload)
+        _verify_event_signature(event_in, deal, previous_hash, payload_hash, session_address)
         timestamp = datetime.now(timezone.utc)
+        client_timestamp = event_in.client_timestamp.strip()
+        signature = event_in.signature.strip()
         event_hash = compute_event_hash(
             deal_id=event_in.deal_id,
             actor=event_in.actor,
@@ -143,6 +231,8 @@ def record_event(event_in: EventCreate, authorization: Optional[str] = Header(de
             payload_hash=payload_hash,
             previous_event_hash=previous_hash,
             timestamp=timestamp.isoformat(),
+            signature=signature,
+            client_timestamp=client_timestamp,
         )
 
         event = Event(
@@ -156,6 +246,9 @@ def record_event(event_in: EventCreate, authorization: Optional[str] = Header(de
             previous_event_hash=previous_hash,
             event_hash=event_hash,
             timestamp=timestamp,
+            signature=signature,
+            client_timestamp=client_timestamp,
+            sig_version=EVENT_HASH_VERSION_SIGNED,
         )
         db.save_event(event)
         return event
@@ -181,7 +274,7 @@ def seal_deal(
     head hash. Call this immediately before sending the on-chain dispute so the
     anchored hash describes a log that can no longer change.
     """
-    _require_session(authorization)
+    session_address = _require_session(authorization)
     deal = db.get_deal(deal_id)
     if deal is None:
         raise HTTPException(404, "Deal not found")
@@ -192,6 +285,12 @@ def seal_deal(
             403,
             "Only a deal party (client or worker) may seal the evidence log",
         )
+    # The seal freezes the log that gets anchored on-chain, so it needs the same
+    # binding as an event write: whoever seals must be the authenticated session,
+    # not merely someone who can name a party. Without this a stolen or shared
+    # session token could freeze another party's evidence at any moment.
+    if actor.lower() != session_address.lower():
+        raise HTTPException(403, "actor does not match the authenticated session")
 
     db.seal_deal(deal_id)
     last = db.get_last_event(deal_id)
@@ -230,17 +329,61 @@ def get_disputes(deal_id: str):
     return db.get_disputes(deal_id)
 
 
+def _verify_event_signature_record(ev: Event) -> str:
+    """Recover the signer of a stored event and say what it proves.
+
+    Returns PASS, FAIL, or UNSIGNED_LEGACY. Re-deriving the address from the
+    signature is what makes the chain more than an append-only file the server
+    owns: a row can be checked against the key that wrote it even after the
+    actor field and the hash are read straight out of SQLite.
+    """
+    if ev.sig_version != EVENT_HASH_VERSION_SIGNED or not ev.signature:
+        return "UNSIGNED_LEGACY"
+    message = canonical_event_message(
+        deal_id=ev.deal_id,
+        previous_event_hash=ev.previous_event_hash,
+        event_type=ev.event_type,
+        payload_hash=ev.payload_hash,
+        client_timestamp=ev.client_timestamp or "",
+    )
+    try:
+        recovered = Account.recover_message(
+            encode_defunct(text=message), signature=ev.signature
+        )
+    except Exception:
+        return "FAIL"
+    if recovered.lower() != ev.actor.lower():
+        return "FAIL"
+    deal = db.get_deal(ev.deal_id)
+    if deal is None or ev.actor.lower() not in {p.lower() for p in deal.parties}:
+        return "FAIL"
+    return "PASS"
+
+
 def _verify_chain_logic(deal_id: str) -> dict:
-    """Internal logic: returns dict (not JSONResponse)"""
+    """Internal logic: returns dict (not JSONResponse)
+
+    Chain integrity and signature status are reported separately. A log can be
+    internally consistent (every hash recomputes) and still contain writes nobody
+    authorized, and the reverse is true as well; collapsing the two into one
+    verdict would hide which of the two guarantees is missing.
+    """
     if db.get_deal(deal_id) is None:
         raise HTTPException(404, "Deal not found")
 
     events = db.get_events(deal_id)
 
     if not events:
-        return {"deal_id": deal_id, "verification": "PASS", "events": 0}
+        return {
+            "deal_id": deal_id,
+            "verification": "PASS",
+            "signature_status": "PASS",
+            "signatures": {"events": 0, "signed": 0, "legacy": 0, "failed": 0},
+            "events": 0,
+        }
 
     expected_prev = GENESIS
+    signature_results = []
     for i, ev in enumerate(events):
         if ev.previous_event_hash != expected_prev:
             return {
@@ -266,6 +409,8 @@ def _verify_chain_logic(deal_id: str) -> dict:
             payload_hash=ev.payload_hash,
             previous_event_hash=ev.previous_event_hash,
             timestamp=ev.timestamp.isoformat(),
+            signature=ev.signature,
+            client_timestamp=ev.client_timestamp,
         )
         if recomputed != ev.event_hash:
             return {
@@ -274,20 +419,39 @@ def _verify_chain_logic(deal_id: str) -> dict:
                 "reason": f"Event {i}: event hash mismatch (tampered)",
                 "events": len(events),
             }
+        signature_results.append(_verify_event_signature_record(ev))
         expected_prev = ev.event_hash
 
+    signature_status = _aggregate_signature_status(signature_results)
     return {
         "deal_id": deal_id,
         "verification": "PASS",
         "genesis_hash": events[0].event_hash,
         "last_hash": events[-1].event_hash,
+        "hash_version": events[-1].sig_version,
+        "signature_status": signature_status,
+        "signatures": {
+            "events": len(events),
+            "signed": sum(1 for r in signature_results if r == "PASS"),
+            "legacy": sum(1 for r in signature_results if r == "UNSIGNED_LEGACY"),
+            "failed": sum(1 for r in signature_results if r == "FAIL"),
+        },
         "events": len(events),
     }
 
 
+def _aggregate_signature_status(results: list[str]) -> str:
+    """One verdict for the whole log: FAIL beats UNSIGNED_LEGACY beats PASS."""
+    if "FAIL" in results:
+        return "FAIL"
+    if "UNSIGNED_LEGACY" in results:
+        return "UNSIGNED_LEGACY"
+    return "PASS"
+
+
 @app.get("/deals/{deal_id}/verify")
 def verify_chain(deal_id: str):
-    """Verify hash chain integrity - public endpoint"""
+    """Verify hash chain integrity and event signatures - public endpoint"""
     result = _verify_chain_logic(deal_id)
     return JSONResponse(
         content=result,
@@ -322,6 +486,22 @@ def get_case_file(deal_id: str):
                 "previous_event_hash": ev.previous_event_hash,
                 "event_hash": ev.event_hash,
                 "timestamp": ev.timestamp.isoformat(),
+                # What the actor authorized, and the proof it authorized it, so
+                # an adjudicator can re-derive the signer without trusting this
+                # server. `signed_fields` repeats the exact message inputs in the
+                # order the signature covers them.
+                "signature": ev.signature,
+                "client_timestamp": ev.client_timestamp,
+                "sig_version": ev.sig_version,
+                "signature_status": _verify_event_signature_record(ev),
+                "signed_fields": {
+                    "domain": EVENT_SIGN_DOMAIN,
+                    "deal_id": ev.deal_id,
+                    "previous_event_hash": ev.previous_event_hash,
+                    "event_type": ev.event_type,
+                    "payload_hash": ev.payload_hash,
+                    "client_timestamp": ev.client_timestamp,
+                },
             }
             for ev in events
         ],
