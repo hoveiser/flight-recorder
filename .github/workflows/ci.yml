@@ -19,4 +19,15 @@ jobs:
           pip install -r requirements.txt
       
       - name: Run all tests
+        # genlayer-test resolves the GenVM release as "the latest GitHub release"
+        # unless GENVM_VERSION says otherwise. contracts/settlement.py pins the
+        # runner it runs on in its `Depends: py-genlayer:<hash>` header, and that
+        # hash only exists in the releases it was cut from, so an unpinned
+        # "latest" makes the direct suite fail for a reason that has nothing to
+        # do with the contract: v0.6.0-rc9 (Oct 8) dropped it and all 53 direct
+        # tests died in the loader. Pinned to the release that carries the hash,
+        # the same one CI resolved when the suite last passed on Sep 26.
+        # Bump this together with the contract header pin, never on its own.
+        env:
+          GENVM_VERSION: v0.6.0-rc6
         run: pytest tests/ -v
