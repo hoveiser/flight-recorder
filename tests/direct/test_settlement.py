@@ -6,6 +6,8 @@ branch below exercises the same code path production uses.
 import json
 import hashlib
 
+import pytest
+
 from tests.direct.conftest import mock_json_llm, to_hex
 
 CONTRACT_PATH = "contracts/settlement.py"
@@ -147,7 +149,7 @@ def test_dispute_requires_party(direct_vm, direct_deploy, direct_alice, direct_b
     did = _open(c, direct_vm, direct_alice, direct_bob)
     direct_vm.sender = direct_charlie
     with direct_vm.expect_revert("Only parties"):
-        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
 
 
 def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -155,7 +157,7 @@ def test_resolve_refunded_when_worker_fails(direct_vm, direct_deploy, direct_ali
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Only 500 delivered"})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "REFUNDED"
@@ -167,7 +169,7 @@ def test_finalize_pays_winner(direct_vm, direct_deploy, direct_alice, direct_bob
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Worker failed"})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
     direct_vm.sender = direct_bob
     c.finalize(did)
@@ -184,7 +186,7 @@ def test_resolve_approved_when_worker_delivers(direct_vm, direct_deploy, direct_
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, FULFILLED_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "APPROVED", "reasoning": "1000 records delivered"})
-    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH)
+    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH, CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "APPROVED"
@@ -197,7 +199,7 @@ def test_finalize_approved_pays_worker(direct_vm, direct_deploy, direct_alice, d
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, FULFILLED_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "APPROVED", "reasoning": "Delivered"})
-    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH)
+    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH, CHAIN_HEAD)
     c.resolve(did)
     # The client is the losing party after APPROVED, so the client is the one
     # allowed to accept the verdict before the appeal window closes.
@@ -222,7 +224,7 @@ def test_case_file_hash_mismatch_refund(direct_vm, direct_deploy, direct_alice, 
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, TAMPERED_CONTENT)
     # No LLM mock is registered on purpose: reaching the model here is a bug.
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "EVIDENCE_MISMATCH"
@@ -243,7 +245,7 @@ def test_agreement_mismatch_when_terms_rewritten(direct_vm, direct_deploy, direc
     did = _open(c, direct_vm, direct_alice, direct_bob)
     rewritten = _case_file(dod={"success_criteria": "Deliver 10 records"})
     _mock_case(direct_vm, rewritten)
-    c.dispute(did, CASE_FILE_URL, _sha(rewritten))
+    c.dispute(did, CASE_FILE_URL, _sha(rewritten), CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "AGREEMENT_MISMATCH"
@@ -256,7 +258,7 @@ def test_tampered_chain_refunds(direct_vm, direct_deploy, direct_alice, direct_b
     did = _open(c, direct_vm, direct_alice, direct_bob)
     body = _case_file(chain={"verification": "FAIL", "last_hash": CHAIN_HEAD})
     _mock_case(direct_vm, body)
-    c.dispute(did, CASE_FILE_URL, _sha(body))
+    c.dispute(did, CASE_FILE_URL, _sha(body), CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "TAMPERED_EVIDENCE"
@@ -269,7 +271,7 @@ def test_missing_definition_of_done_refunds(direct_vm, direct_deploy, direct_ali
     did = _open(c, direct_vm, direct_alice, direct_bob)
     body = _case_file(dod={})
     _mock_case(direct_vm, body)
-    c.dispute(did, CASE_FILE_URL, _sha(body))
+    c.dispute(did, CASE_FILE_URL, _sha(body), CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "AGREEMENT_MISMATCH"
@@ -291,7 +293,7 @@ def test_anchor_mismatch_refunds(direct_vm, direct_deploy, direct_alice, direct_
 
     rewritten = _case_file(chain={"verification": "PASS", "last_hash": "c" * 64})
     _mock_case(direct_vm, rewritten)
-    c.dispute(did, CASE_FILE_URL, _sha(rewritten))
+    c.dispute(did, CASE_FILE_URL, _sha(rewritten), CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "ANCHOR_MISMATCH"
@@ -307,7 +309,7 @@ def test_anchor_match_allows_adjudication(direct_vm, direct_deploy, direct_alice
 
     _mock_case(direct_vm, FULFILLED_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "APPROVED", "reasoning": "Delivered"})
-    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH)
+    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH, CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "APPROVED"
@@ -319,7 +321,7 @@ def test_unreachable_case_file_retries_then_unresolvable(direct_vm, direct_deplo
     c = direct_deploy(CONTRACT_PATH)
     did = _open(c, direct_vm, direct_alice, direct_bob)
     direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     for _ in range(3):
         c.resolve(did)
     d = json.loads(c.get_deal(did))
@@ -334,7 +336,7 @@ def test_appeal_reruns_and_is_final(direct_vm, direct_deploy, direct_alice, dire
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Short"})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
 
     direct_vm.sender = direct_bob  # worker lost, so the worker appeals
@@ -359,7 +361,7 @@ def test_appeal_requires_loser(direct_vm, direct_deploy, direct_alice, direct_bo
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Short"})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
     direct_vm.sender = direct_alice  # client won; the client may not appeal
     with direct_vm.expect_revert("Only loser may appeal"):
@@ -438,7 +440,7 @@ def test_raised_round_increments_fetch_failures(direct_vm, direct_deploy, direct
     c = direct_deploy(CONTRACT_PATH)
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
 
     _force_consensus_failure(monkeypatch)
     c.resolve(did)
@@ -456,7 +458,7 @@ def test_repeated_raised_rounds_reach_unresolvable(direct_vm, direct_deploy, dir
     c = direct_deploy(CONTRACT_PATH)
     did = _open(c, direct_vm, direct_alice, direct_bob)
     _mock_case(direct_vm, CASE_FILE_CONTENT)
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
 
     _force_consensus_failure(monkeypatch)
     for expected in (1, 2, 3):
@@ -481,7 +483,7 @@ def test_raised_rounds_share_allowance_with_fetch_failures(direct_vm, direct_dep
     c = direct_deploy(CONTRACT_PATH)
     did = _open(c, direct_vm, direct_alice, direct_bob)
     direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)  # UNREACHABLE -> 1
     assert json.loads(c.get_deal(did))["fetch_failures"] == 1
 
@@ -527,7 +529,7 @@ def test_prompt_injection_does_not_change_verdict(direct_vm, direct_deploy, dire
         direct_vm.value = 0
         _mock_case(direct_vm, body)
         mock_json_llm(direct_vm, r"adjudicator", {"verdict": llm_verdict, "reasoning": reasoning})
-        c.dispute(did, CASE_FILE_URL, _sha(body))
+        c.dispute(did, CASE_FILE_URL, _sha(body), CHAIN_HEAD)
         c.resolve(did)
         return json.loads(c.get_deal(did))["verdict"]
 
@@ -584,7 +586,7 @@ def test_resolve_requires_party(direct_vm, direct_deploy, direct_alice, direct_b
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     # No LLM mock on purpose: the party gate must reject before any AI round.
     direct_vm.sender = direct_alice
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     direct_vm.sender = direct_charlie
     with direct_vm.expect_revert("Only parties can resolve"):
         c.resolve(did)
@@ -618,7 +620,7 @@ def test_validator_prompt_includes_event_payloads(direct_vm, direct_deploy, dire
     _mock_case(direct_vm, body)
     mock_json_llm(direct_vm, marker, {"verdict": "APPROVED", "reasoning": "marker seen"})
     direct_vm.sender = direct_alice
-    c.dispute(did, CASE_FILE_URL, _sha(body))
+    c.dispute(did, CASE_FILE_URL, _sha(body), CHAIN_HEAD)
     c.resolve(did)
     d = json.loads(c.get_deal(did))
     assert d["verdict"] == "APPROVED"
@@ -637,7 +639,7 @@ def test_appeal_with_new_evidence_updates_case_file(direct_vm, direct_deploy, di
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Only 500 delivered"})
     direct_vm.sender = direct_alice
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
     assert json.loads(c.get_deal(did))["status"] == "adjudicated"
 
@@ -671,7 +673,7 @@ def test_appeal_without_url_keeps_old_case_file(direct_vm, direct_deploy, direct
     _mock_case(direct_vm, CASE_FILE_CONTENT)
     mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Only 500 delivered"})
     direct_vm.sender = direct_alice
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     c.resolve(did)
 
     direct_vm.sender = direct_bob
@@ -694,7 +696,7 @@ def test_unresolvable_recovers_via_timeout_release(direct_vm, direct_deploy, dir
     did = _open(c, direct_vm, direct_alice, direct_bob)
     direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
     direct_vm.sender = direct_alice
-    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
     for _ in range(3):
         c.resolve(did)
     d = json.loads(c.get_deal(did))
@@ -716,3 +718,259 @@ def test_unresolvable_recovers_via_timeout_release(direct_vm, direct_deploy, dir
     assert len(payouts) == 1
     assert payouts[0]["to"].lower() == to_hex(direct_alice).lower(), "the client, not the worker, is refunded"
     assert payouts[0]["amount"] == VALUE
+
+
+# ---------------------------------------------------------------------------
+# v5 (D5): disputing anchors the sealed chain head, atomically.
+#
+# dispute() now takes the head it is disputing about. If no delivery anchor
+# exists the call writes it; if one exists it must be byte-identical or the whole
+# transaction reverts. That removes the window where the head being compared at
+# resolve time could be chosen, or moved, by whoever got there second.
+# ---------------------------------------------------------------------------
+
+
+def _disputed(c, direct_vm, client, worker, head=CHAIN_HEAD, body=None):
+    """Open a deal and dispute it, returning the deal id."""
+    did = _open(c, direct_vm, client, worker)
+    _mock_case(direct_vm, CASE_FILE_CONTENT if body is None else body)
+    direct_vm.sender = client
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, head)
+    return did
+
+
+def test_dispute_without_chain_head_is_rejected(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The head argument is required: there is no unanchored dispute path left."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    direct_vm.sender = direct_alice
+    with pytest.raises(Exception):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH)
+    # The rejected call must not have changed anything.
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "funded"
+    assert d["milestones"] == {}
+    assert d["case_file_hash"] is None
+
+
+@pytest.mark.parametrize(
+    "bad_head",
+    [
+        "",
+        "b" * 63,
+        "b" * 65,
+        "B" * 64,
+        "0x" + "b" * 62,
+        "z" * 64,
+        "b" * 63 + "-",
+        "b" * 32 + "-" + "b" * 31,
+    ],
+)
+def test_dispute_rejects_malformed_chain_head(direct_vm, direct_deploy, direct_alice, direct_bob, bad_head):
+    """Only a bare 64-character lowercase digest counts as a chain head."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("chain_head must be 64 lowercase hex characters"):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, bad_head)
+    assert json.loads(c.get_deal(did))["status"] == "funded"
+
+
+@pytest.mark.parametrize(
+    "bad_hash",
+    ["", "f" * 63, "f" * 65, "https://" + "x" * 2000],
+)
+def test_dispute_still_validates_the_case_file_digest(direct_vm, direct_deploy, direct_alice, direct_bob, bad_hash):
+    """The new argument does not relax the old ones."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("case_file_hash must be SHA-256"):
+        c.dispute(did, CASE_FILE_URL, bad_hash, CHAIN_HEAD)
+    assert json.loads(c.get_deal(did))["status"] == "funded"
+
+
+def test_dispute_writes_the_delivery_anchor(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Happy path: one call both disputes the deal and anchors the head."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, FULFILLED_CONTENT)
+    mock_json_llm(direct_vm, r"adjudicator", {"verdict": "APPROVED", "reasoning": "Delivered"})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, FULFILLED_HASH, CHAIN_HEAD)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "disputed"
+    assert d["milestones"]["delivery"] == CHAIN_HEAD
+    c.resolve(did)
+    assert json.loads(c.get_deal(did))["verdict"] == "APPROVED"
+
+
+def test_dispute_is_the_anchor_and_cannot_be_moved_afterwards(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Once a dispute anchored a head, anchor_milestone cannot replace it."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _disputed(c, direct_vm, direct_alice, direct_bob)
+    with direct_vm.expect_revert("Milestone already anchored"):
+        c.anchor_milestone(did, "delivery", "d" * 64)
+    assert json.loads(c.get_deal(did))["milestones"]["delivery"] == CHAIN_HEAD
+
+
+def test_dispute_rejects_a_head_that_differs_from_the_existing_anchor(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Pre-anchor race: the counterparty anchored a different head first.
+
+    The worker seals its own log and anchors that head. The client cannot then
+    dispute against a different head: the call reverts, the dispute is not
+    opened, and the anchored head stays the one that was written first.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    other_head = "d" * 64
+    direct_vm.sender = direct_bob
+    c.anchor_milestone(did, "delivery", other_head)
+
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("ANCHOR_MISMATCH"):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
+
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "funded", "a reverted dispute must not open the deal"
+    assert d["milestones"]["delivery"] == other_head, "the first anchor wins"
+    assert d["case_file_hash"] is None
+
+    # The honest path still works: disputing the head that is on record.
+    body = _case_file(chain={"verification": "PASS", "last_hash": other_head})
+    _mock_case(direct_vm, body)
+    c.dispute(did, CASE_FILE_URL, _sha(body), other_head)
+    assert json.loads(c.get_deal(did))["status"] == "disputed"
+
+
+def test_dispute_with_the_same_head_twice_is_still_one_dispute(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """No double dispute: the status gate holds even when the head matches."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _disputed(c, direct_vm, direct_alice, direct_bob)
+    with direct_vm.expect_revert("Not disputable"):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
+
+
+def test_dispute_is_not_for_a_stranger_even_with_a_valid_head(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """Non-party dispute: the head argument does not widen who may call."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert("Only parties"):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
+    assert json.loads(c.get_deal(did))["milestones"] == {}
+
+
+def test_anchor_milestone_rejects_a_head_that_is_not_lowercase_hex(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Both doors into the anchor validate the same way."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("chain_head must be 64 lowercase hex characters"):
+        c.anchor_milestone(did, "delivery", "B" * 64)
+    assert json.loads(c.get_deal(did))["milestones"] == {}
+
+
+def test_anchor_mismatch_when_the_case_file_declares_another_head(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """ANCHOR_MISMATCH now gates every disputed deal, not only pre-anchored ones.
+
+    The dispute anchors the head the party submitted and the digest of the bytes
+    it served, so a case file that declares a different head inside those same
+    bytes is refusable evidence: the escrow returns to the client and the LLM is
+    never asked to judge it.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    lying = _case_file(chain={"verification": "PASS", "last_hash": "e" * 64})
+    _mock_case(direct_vm, lying)
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, _sha(lying), CHAIN_HEAD)
+    assert json.loads(c.get_deal(did))["milestones"]["delivery"] == CHAIN_HEAD
+    # No LLM mock registered: reaching the model here is a bug.
+    c.resolve(did)
+    d = json.loads(c.get_deal(did))
+    assert d["verdict"] == "ANCHOR_MISMATCH"
+    assert d["status"] == "refunded"
+    payouts = json.loads(c.get_payouts())
+    assert len(payouts) == 1
+    assert payouts[0]["to"].lower() == to_hex(direct_alice).lower()
+
+
+def test_timeout_release_cannot_undercut_a_pending_dispute(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Race dispute versus timeout_release: the dispute is the live action."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _disputed(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_bob
+    # Even backdated past seven days, a deal that is in dispute cannot be
+    # released to the worker: that would pay out over an open adjudication.
+    _backdate_deal(c, did, seconds=TIMEOUT_SECONDS + 86400)
+    with direct_vm.expect_revert("Not funded"):
+        c.timeout_release(did)
+    assert json.loads(c.get_payouts()) == []
+
+
+def test_dispute_after_timeout_release_is_rejected(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The other order: once the escrow moved, the dispute cannot reopen it."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    _backdate_deal(c, did, seconds=TIMEOUT_SECONDS + 86400)
+    direct_vm.sender = direct_bob
+    c.timeout_release(did)
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("Not disputable"):
+        c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
+    payouts = json.loads(c.get_payouts())
+    assert len(payouts) == 1
+    assert payouts[0]["to"].lower() == to_hex(direct_bob).lower()
+
+
+def test_resolve_and_appeal_keep_their_ordering(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """Race resolve versus appeal: only an open dispute can be adjudicated.
+
+    Before the appeal nothing is adjudicated; after finalize the deal is terminal
+    and neither resolve nor appeal can move it again, so an appeal cannot be used
+    to re-run a settlement that already paid out.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _disputed(c, direct_vm, direct_alice, direct_bob)
+    _mock_case(direct_vm, CASE_FILE_CONTENT)
+    mock_json_llm(direct_vm, r"adjudicator", {"verdict": "REFUNDED", "reasoning": "Short"})
+    c.resolve(did)
+    with direct_vm.expect_revert("Not in dispute"):
+        c.resolve(did)
+    direct_vm.sender = direct_bob
+    c.finalize(did)
+    assert json.loads(c.get_deal(did))["status"] == "refunded"
+    with direct_vm.expect_revert("Not adjudicated"):
+        c.appeal(did)
+    with direct_vm.expect_revert("Not in dispute"):
+        c.resolve(did)
+
+
+def test_unresolvable_keeps_the_anchor_and_recovers_as_in_d4(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The transient-failure path is untouched by the new anchor requirement."""
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.mock_web(r"example\.com", {"status": 503, "body": ""})
+    direct_vm.sender = direct_alice
+    c.dispute(did, CASE_FILE_URL, CASE_FILE_HASH, CHAIN_HEAD)
+    for _ in range(3):
+        c.resolve(did)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "unresolvable"
+    assert d["milestones"]["delivery"] == CHAIN_HEAD, "the anchor survives the failure path"
+    assert json.loads(c.get_payouts()) == []
+
+    with direct_vm.expect_revert("Appeal window still open"):
+        c.timeout_release(did)
+    _backdate_deal(c, did, seconds=d["appeal_window_sec"] + 1)
+    c.timeout_release(did)
+    d = json.loads(c.get_deal(did))
+    assert d["status"] == "refunded"
+    assert d["verdict"] == "UNRESOLVABLE_RECOVERED"
+    payouts = json.loads(c.get_payouts())
+    assert len(payouts) == 1
+    assert payouts[0]["to"].lower() == to_hex(direct_alice).lower()

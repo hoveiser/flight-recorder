@@ -1,4 +1,49 @@
-# Flight Recorder — Development Log
+# Flight Recorder - Development Log
+
+### Oct 10 - v5 work started (D5 branch): signed events, then an atomic head anchor
+
+Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
+(`0xfD91f7eDCa653702ACe1F040F4d56d35e674c750`) stays live and untouched.
+
+- **Phase 1, signed events (off-chain).** Every new event carries an EIP-191
+  `personal_sign` signature over a canonical message: domain tag, `deal_id`,
+  previous event hash, event type, SHA-256 of the canonical payload, and a client
+  timestamp. The server recovers the signer and requires three things at once
+  (recovered address equals the claimed actor, the actor is a deal party, the
+  actor is the authenticated session), applies a timestamp window with a floor
+  (900s) and a ceiling (300s), and stores the signature inside the hash-chain
+  input as version 2. Rows written before the change keep version 1 and are still
+  verified with the original six-field formula; the migration only adds columns
+  and rewrites nothing, so an existing log's head hash does not move.
+  `/deals/{id}/verify` now reports chain integrity and signature status separately
+  (`PASS`, `FAIL`, `UNSIGNED_LEGACY`), and the case file exports `actor`,
+  `signature`, `sig_version` and `signed_fields` per event so an adjudicator can
+  re-derive the signer without trusting this server.
+- **Phase 2, atomic head anchor (contract).** `dispute()` takes the sealed chain
+  head as a fourth, required argument and writes it as the `delivery` anchor in the
+  same transaction, or refuses if an anchor already exists and differs. Because
+  every dispute now anchors a head, the `ANCHOR_MISMATCH` gate applies to every
+  disputed deal instead of only to deals that happened to be anchored, and a
+  missing anchor fails closed rather than being skipped.
+- Ambiguities resolved by the most conservative reading, recorded here:
+  - `chain_head` is accepted only as 64 *lowercase* hex, so an empty evidence log
+    (whose head is the literal `GENESIS`) cannot be disputed on-chain. A dispute
+    with no events to point at is not evidence of anything, so refusing it is
+    safer than widening the format. The API still seals and exports such a log.
+  - The anchor comparison is exact string equality; both entry points normalize by
+    rejecting anything that is not lowercase hex at the gate instead of silently
+    folding cases together.
+  - Deal parties in the off-chain API are now addresses. A name like `agentA` is a
+    self-report; the signature tests need an identity that can be proven.
+  - Existing test fixtures were updated rather than duplicated, because signing is
+    mandatory for new writes; the legacy-event path is covered by dedicated tests
+    that insert version 1 rows directly.
+- Suite so far: **35 off-chain passed** on Windows (Python 3.13.13), 14 + 18 + 3 by
+  file. Direct-mode collection is **53 tests** (29 carried over and adapted to the
+  new `dispute` argument, plus 24 covering the anchor). WSL is present on this
+  machine but has no working DNS for `pip`, so the direct suite cannot be installed
+  or run locally this round; CI on Ubuntu is the environment of record for those
+  53 tests.
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 
