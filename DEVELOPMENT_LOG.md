@@ -1,4 +1,139 @@
-# Flight Recorder — Development Log
+# Flight Recorder - Development Log
+
+### Oct 10 - v5 work started (D5 branch): signed events, then an atomic head anchor
+
+Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
+(`0xfD91f7eDCa653702ACe1F040F4d56d35e674c750`) stays live and untouched.
+
+- **Phase 1, signed events (off-chain).** Every new event carries an EIP-191
+  `personal_sign` signature over a canonical message: domain tag, `deal_id`,
+  previous event hash, event type, SHA-256 of the canonical payload, and a client
+  timestamp. The server recovers the signer and requires three things at once
+  (recovered address equals the claimed actor, the actor is a deal party, the
+  actor is the authenticated session), applies a timestamp window with a floor
+  (900s) and a ceiling (300s), and stores the signature inside the hash-chain
+  input as version 2. Rows written before the change keep version 1 and are still
+  verified with the original six-field formula; the migration only adds columns
+  and rewrites nothing, so an existing log's head hash does not move.
+  `/deals/{id}/verify` now reports chain integrity and signature status separately
+  (`PASS`, `FAIL`, `UNSIGNED_LEGACY`), and the case file exports `actor`,
+  `signature`, `sig_version` and `signed_fields` per event so an adjudicator can
+  re-derive the signer without trusting this server.
+- **Phase 2, atomic head anchor (contract).** `dispute()` takes the sealed chain
+  head as a fourth, required argument and writes it as the `delivery` anchor in the
+  same transaction, or refuses if an anchor already exists and differs. Because
+  every dispute now anchors a head, the `ANCHOR_MISMATCH` gate applies to every
+  disputed deal instead of only to deals that happened to be anchored, and a
+  missing anchor fails closed rather than being skipped.
+- Ambiguities resolved by the most conservative reading, recorded here:
+  - `chain_head` is accepted only as 64 *lowercase* hex, so an empty evidence log
+    (whose head is the literal `GENESIS`) cannot be disputed on-chain. A dispute
+    with no events to point at is not evidence of anything, so refusing it is
+    safer than widening the format. The API still seals and exports such a log.
+  - The anchor comparison is exact string equality; both entry points normalize by
+    rejecting anything that is not lowercase hex at the gate instead of silently
+    folding cases together.
+  - Deal parties in the off-chain API are now addresses. A name like `agentA` is a
+    self-report; the signature tests need an identity that can be proven.
+  - Existing test fixtures were updated rather than duplicated, because signing is
+    mandatory for new writes; the legacy-event path is covered by dedicated tests
+    that insert version 1 rows directly.
+- Suite so far: **35 off-chain passed** on Windows (Python 3.13.13), 14 + 18 + 3 by
+  file. Direct-mode collection is **53 tests** (29 carried over and adapted to the
+  new `dispute` argument, plus 24 covering the anchor). WSL is present on this
+  machine but has no working DNS for `pip`, so the direct suite cannot be installed
+  or run locally this round; CI on Ubuntu is the environment of record for those
+  53 tests.
+- **Phase 3, callers.** `demo/signed_client.py` and `scripts/event_signing.js` are the
+  two client implementations of the signed contract (same canonical message, same
+  digest rules), and both demos, `scripts/e2e_demo.js`, `scripts/run_live_scenarios.js`
+  and the browser page now sign every event with a throwaway key and pass the sealed
+  head to `dispute`. `index.html` seals the visitor's own log and hashes the case file
+  its API serves, so the flow anchors without any extra step; it only falls back to the
+  published happy-path file when there is no session, and the fallback refuses to post
+  a dispute whose head is not 64 lowercase hex.
+- **Published evidence regenerated.** The v4 `happy_path.json` was hand-written and
+  declares no chain head, so D5 could not anchor it. `demo/make_case_file.py` now
+  builds the file from a real recorder run (two random keys, discarded afterwards, so
+  the published bytes can never be extended by anybody) and prints the SHA-256 of the
+  published bytes, which is what `index.html`'s `EXPECTED_HASH` and a live dispute must
+  both use. The writer forces `newline=""`: GitHub serves the committed blob, and with
+  `core.autocrlf=true` a text-mode write would put CRLF on disk while the blob stays
+  LF, which silently produces two different digests for "the same" file. Verified: the
+  staged blob hashes to `0ae7f1ad7eca720eaefd9e651e9c60fe258648ac6a19cc58e4d2c896dff12908`,
+  the same number Python, Node and the browser compute.
+- **Phase 4, CI.** Branch pushed and PR #6 opened. The first two runs were red on all
+  53 direct tests with `FileNotFoundError: runner py-genlayer:5jycge... not under
+  trees-v2/v0.6.0-rc9`: `genlayer-test` resolves the GenVM release as "the latest
+  GitHub release" unless `GENVM_VERSION` is set, and `genvm-manager` v0.6.0-rc9
+  (published Oct 8) no longer ships the runner hash that `contracts/settlement.py`
+  pins in its `Depends` header. The suite had passed on Sep 26 because the latest
+  release then was v0.6.0-rc6. The fix pins `GENVM_VERSION=v0.6.0-rc6` on the CI test
+  step; the contract header pin is untouched, so D5 runs on the same runner as D4 and
+  no dependency version changed. Read from the package source that `resolve_version()`
+  returns the env value before it queries the network and that the pytest plugin leaves
+  `sdk_version` unset, so nothing overrides it.
+  Green on `cded8aa`: **88 passed, 0 failed** in 27.59s (53 direct-mode, 35 off-chain).
+  Final head of the branch, `5dd34c8`: **105 passed, 0 failed** in 27.20s
+  (55 direct-mode, 50 off-chain: 14 recorder, 18 signing, 15 hardening, 3 canonicalization).
+- **Phase 5, D5 and live proof.** Deployed **D5**: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`
+  on chain 61997 (deploy tx
+  `0xee4f5955ecded5fd6d7ea493fb21dc79e2a6ba8aa5a853d6df457cb2ee10d500`, verified through the
+  explorer JSON API: FINALIZED, `to_address` is the new contract). D1 to D4 untouched; D4's
+  address was copied out of `CONTRACT_ADDRESS.txt` before the deploy overwrote it. The final
+  step of the deploy script, `getContractSchema`, fails with a studio-dev backend error
+  (`psycopg2.ProgrammingError: can't adapt type 'dict'`) after the address is written; reads and
+  writes on the contract work, so this is a node-side bug and is recorded rather than worked
+  around. `scripts/e2e_demo.js` ran the full lifecycle on D5 with signed events and a sealed
+  head, and `scripts/adversarial_live.js` ran ten adversarial cases (10/10 passed) with every
+  hash read back from the explorer.
+- Two facts learned by measuring rather than assuming, both now encoded in the scripts:
+  - A GenLayer transaction that the contract refuses still ends `statusName FINALIZED` with
+    `result_name MAJORITY_AGREE`. Only `txExecutionResultName` separates `FINISHED_WITH_RETURN`
+    from `FINISHED_WITH_ERROR`, and the transaction record carries no revert string, so the
+    exact rejection messages are asserted in direct mode while the live run asserts refusal
+    plus "the deal did not move".
+  - A write's fee is not one number: `estimateTransactionFees()` returns about 0.1 GEN while
+    `estimateTransactionFeesForWrite()` priced `resolve` on D5 at 761268000010352 wei. The
+    recorded `fee-profile.json` allocation names a recipient from another contract, and the
+    node rejects an allocation that does not match a message the transaction actually produces
+    (`MessageNoMatchingAllocation`), so `e2e_demo.js` now asks the node to price `resolve` and
+    keeps the profile only as a fallback.
+- **Phase 6, security review.** Scans that ran and what they said are in AUDIT.md: L2
+  lightweight review (0 findings), bandit (3 medium B310 to 0 medium after F19), pip-audit
+  (no known vulnerabilities), `npm audit` (0 vulnerabilities), and a grep-based secret scan of
+  the tree and of all 107 revisions (no secret values; `.env` was never committed). Findings
+  F16 to F24 are recorded there, and each gap the coverage matrices exposed got a regression
+  test: `tests/test_api_hardening.py` (15 tests) for the API, two new direct tests for the
+  `anchor_milestone` party gate and the closed set of milestone names. Suite is now 50
+  off-chain and 55 direct-mode collected.
+- The most consequential of those is **F16**: `POST /deals/{id}/dispute` used to accept a
+  typed-in `party` with no session at all, so anyone could write a claim into anyone's evidence
+  record. It now carries the same binding as an event write. Fixing it raised a second issue,
+  **F18**: putting input bounds on the response models would have made every row written before
+  the bounds unreadable, which would turn hardening into data loss, so input types and response
+  types are now separate and a test proves pre-D5 history still exports.
+- **Phase 7, docs.** README, JUDGING.md and `index.html` were taken through a
+  claims-versus-reality pass against D5: deployment history and versioning list D5 and mark
+  D4 superseded, the API reference gained the auth column, the event fields, the byte limits,
+  the timestamp bounds and an event-signing section, the case file sample is the shape the
+  recorder actually exports today, and the site's verdict table now lists all four evidence
+  verdicts. Three specific corrections rather than additions:
+  - The README said `dispute()` anchors the case-file hash *not* the chain head, and that the
+    browser flow never anchors. Since D5 the dispute anchors both, and the browser flow does
+    anchor; the paragraph now says so and states the consequence (an empty log cannot be
+    disputed).
+  - The site's hash-checker caption credited the digest to "deal 4 of the previous v2
+    deployment (dispute tx 0x571095fb…)". That transaction anchored the *old hand-written* case
+    file, whose bytes are no longer what `main` serves, so the caption now describes what the
+    check actually does and `EXPECTED_HASH` was regenerated with the file.
+  - "Studio Next" and "studio-dev" were used interchangeably. The product name stays GenLayer
+    Studio Next; the network is studio-dev (chain 61997), and that is now stated once and used
+    consistently. The stale "do not upgrade before the hackathon deadline" instruction is gone,
+    replaced by the actual rule (no major dependency or Python changes in a feature round) plus
+    the `GENVM_VERSION` pin and why it exists.
+  - `flight_recorder.db` was already in `.gitignore` and `git ls-files` shows no database
+    tracked, so no untracking was needed; verified rather than assumed.
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 

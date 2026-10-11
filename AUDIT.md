@@ -440,3 +440,114 @@ Either way, F5 (self-attested integrity) cannot be fixed by redeployment at all.
 It needs signed events, which is already the roadmap item; the honest interim
 position is that the contract verifies _consistency with what was committed_, not
 _truthfulness of what was committed_.
+
+---
+
+## D5 round (2026-10-10): signed events, the atomic head anchor, and what the new scans found
+
+This section is the audit of the round that produced **D5**
+(`0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`). F1 to F15 above are the v3/v4 audit and are
+left as written; the numbering here continues it. Every finding below has a test that fails
+without the fix, and the two matrices at the end are the coverage claim in a form that can be
+checked rather than admired.
+
+### Scans that actually ran, and what they said
+
+| scan | command | result | what was done about it |
+| --- | --- | --- | --- |
+| L1 static check | not invoked as a separate step in this round | no result to report, so none is claimed | the L2 review below is the scan that actually ran |
+| L2 lightweight review | `qodersec review --layer=l2` | completed, **0 findings** | nothing to fix |
+| bandit | `python -m bandit -q -r src contracts demo tests scripts -ll` | first run: 3 medium (B310 `urlopen` in the two demos and `demo/signed_client.py`), 0 high; after F19: **0 medium, 0 high** | fixed and justified in place |
+| bandit, all severities | same without `-ll` | 270 low, all `B101 assert_used`, all in tests | left: an assert *is* the test language, and silencing it would hide real asserts |
+| pip-audit | `python -m pip_audit -r requirements.txt --no-deps` | **No known vulnerabilities found** | n/a |
+| npm audit | `npm audit` and `npm audit --omit=dev` | **found 0 vulnerabilities** (221 packages) | n/a |
+| secret scan, tree | `git grep` for key/token/secret patterns and for 40+ hex strings over tracked files | no secret values; hits are documentation, addresses, signatures in the published case file, and the devnet test key already committed in `gltest.config.yaml` | see F21 |
+| secret scan, history | `git grep` over all 107 revisions for `PRIVATE_KEY...=` and `git log --all -- .env` | 3 hits, all the same help string in `scripts/wallet_key.js`; `.env` was never committed in any revision | n/a |
+| gitleaks | not installed on this machine and no network install of a new binary was attempted | the grep scan above is the documented substitute, which the brief allows | noted as a gap |
+
+Tool notes: the L2 lightweight review above ran against this round's working-tree changes and
+returned no findings. Nothing here claims a scan passed that was not executed; where a check
+could not be run (gitleaks, a full cloud scan of the repository) that is stated in the row
+instead of being left blank.
+
+### Findings
+
+| ID | severity | source | where | what it means | status |
+| --- | --- | --- | --- | --- | --- |
+| F16 | high | manual review | `src/main.py` `file_dispute` (was: no `authorization` parameter) | `POST /deals/{id}/dispute` checked that `party` was on the deal, but `party` is a string the caller types. Anyone could write a claim into anyone else's evidence record, and the claim ends up in the case file that validators read. | **fixed**, with `test_dispute_requires_a_session`, `test_dispute_party_must_be_the_authenticated_session`, `test_dispute_rejects_a_signer_who_is_not_a_party`, `test_dispute_by_a_party_session_still_works` |
+| F17 | medium | manual review | `src/models.py`, `src/main.py` | No bound on any caller-supplied field: an arbitrarily large `payload`, `metadata`, `definition_of_done`, `claim`, `signature`, `client_timestamp`, `deal_id` or `nonce` was hashed, signature-recovered and stored. Unbounded work handed to the server for free, and a `deal_id` the contract would later refuse. | **fixed**: limits in `src/models.py`, dict budgets via `_bounded_json_size`, and `deal_id` capped at the contract's own 100 |
+| F18 | medium | introduced by F17's fix, caught while writing its tests | `src/models.py` response models | Putting the input bounds on the stored models (`Deal`, `Event`, `Dispute`) would have made every row written before the limit unreadable: hardening the API would have deleted history, including sealed evidence that is already anchored on-chain. | **fixed** by splitting input types from response types; `test_history_written_before_the_limits_still_reads` proves a name-partied deal with an unsigned v1 event still exports |
+| F19 | low | bandit B310 | `demo/signed_client.py`, `demo/scraper_dispute.py`, `demo/code_quality_dispute.py` | The demo clients opened whatever `FLIGHT_RECORDER_URL` said, including `file:` and other local schemes. | **fixed**: shared `api_url()` refuses non-http(s); `test_demo_client_refuses_a_non_http_url` |
+| F20 | medium | manual review of the live runs | `scripts/e2e_demo.js` | Two caller-side blindnesses, both of which produced a wrong "success" on this round's first live runs: it hardcoded deal id 1 (so a second run disputed a *previous* run's deal), and it treated any `FINALIZED` transaction as a successful call. On studio-dev a refused write also ends `FINALIZED` with `MAJORITY_AGREE`; only `txExecutionResultName` distinguishes `FINISHED_WITH_RETURN` from `FINISHED_WITH_ERROR`. | **fixed**: `findDealId()` looks the deal up from the chain, `getFinalizedTx` raises on a refused write, and the dispute now asserts that the on-chain anchor equals the head it sent. Same lesson encoded in `scripts/adversarial_live.js` |
+| F21 | info | manual review | `gltest.config.yaml` | The repository commits a private key. It is the publicly documented GenLayer devnet test key (`0x1111...1111`, address `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A`), it holds only test GEN on a dev chain, and this round used it deliberately as the *counterparty* so that the adversary in the live run is a key anybody could have. It is not a secret and is not used to sign anything that belongs to a user. | left as is, documented |
+| F22 | info | manual review | `src/main.py` CORS | `allow_origins=["*"]` with `allow_credentials` left at its default `False`, and auth by bearer token rather than cookie. A wildcard origin cannot read a response with credentials attached, and nothing in this API trusts a browser-supplied identity: writes need a session token, and a token is only obtainable by signing a nonce with the party's key. The wildcard is what lets the GitHub Pages demo at any commit talk to the hosted recorder. | accepted, documented in the README threat model |
+| F23 | medium | design limitation, still open | `contracts/settlement.py` `_ai_round` | The contract compares the anchored delivery head with the head the case file declares for itself (`chain_integrity.last_hash`). It does not recompute the chain from the events. A case file that lies about its own head *consistently with the digest anchored at dispute time* still passes this gate. This is the same gap F5 describes, narrowed but not closed: D5 makes the head immutable and forces both parties to agree to one before any adjudication, and the recorder seals the log so it cannot grow after anchoring. | **open on purpose**. Closing it means the contract hashing each link itself, which is the next round's work |
+| F24 | low | this round's live runs | D5 on-chain state | `dispute()` requires a 64 lowercase hex head, so an evidence log with no events (whose head is the literal `GENESIS`) cannot be disputed on-chain at all. Conservative and intentional: a dispute with no evidence to point at proves nothing. The API still seals and exports such a log. | accepted, documented in DEVELOPMENT_LOG |
+
+### Matrix 1: contract method x deal status x caller role
+
+Cells are covered or explicitly out of scope; the test named is what fails if the cell
+regresses. `client` and `worker` mean the two parties, `stranger` means an address on neither
+side of the deal. Deal statuses are the ones the contract can actually hold.
+
+| method | funded | delivered | disputed | adjudicated | refunded / released | unresolvable |
+| --- | --- | --- | --- | --- | --- | --- |
+| `open_deal` (payable) | `test_open_deal_locks_funds`, `test_open_deal_escrow_equals_attached_value` (creates it) | n/a, not a state yet | n/a | n/a | n/a | n/a |
+| `open_deal` with 0 value | reverts: `test_open_deal_requires_payable_value`; live: adversarial `zero_value_open_deal` | n/a | n/a | n/a | n/a | n/a |
+| `anchor_milestone` | writes the anchor: `test_dispute_rejects_a_head_that_differs_from_the_existing_anchor` (the counterparty's anchor call is the accepted one), live `anchor_head_a` | same | refuses, an anchor already exists: `test_dispute_is_the_anchor_and_cannot_be_moved_afterwards`, live `anchor_overwrite` ("Milestone already anchored") | same gate | same gate | same gate |
+| `anchor_milestone`, bad head | reverts: `test_anchor_milestone_rejects_a_head_that_is_not_lowercase_hex` | same | same | same | same | same |
+| `anchor_milestone`, unknown milestone name | reverts (`Invalid milestone`): `test_anchor_milestone_refers_only_to_the_three_known_milestones` (new this round, found by building this matrix) | same | same | same | same | same |
+| `anchor_milestone`, stranger | reverts (`Only parties`): `test_anchor_milestone_is_not_for_a_stranger` (new this round, also found by building this matrix) | same | same | same | same | same |
+| `dispute` (party, valid head) | writes the anchor and disputes: `test_dispute_writes_the_delivery_anchor`, live `honest_dispute_with_anchored_head` | `test_record_events_and_chain` path is off-chain; the on-chain `delivered` status is only reachable through `anchor_milestone`, so a `delivered` dispute shares the funded gate and is covered by the same tests | reverts (`Not disputable`): `test_dispute_with_the_same_head_twice_is_still_one_dispute` | reverts | reverts | reverts |
+| `dispute` with no / malformed head | reverts: `test_dispute_without_chain_head_is_rejected`, `test_dispute_rejects_malformed_chain_head` (8 shapes) | same | same | same | same | same |
+| `dispute` head differs from the anchor | reverts `ANCHOR_MISMATCH` and stores nothing: `test_dispute_rejects_a_head_that_differs_from_the_existing_anchor`; live `wrong_head_after_anchor` | same | same | same | same | same |
+| `dispute`, stranger | reverts (`Only parties`): `test_dispute_is_not_for_a_stranger_even_with_a_valid_head`; live `non_party_dispute` | same | same | same | same | same |
+| `resolve` (party) | reverts (`Not in dispute`): `test_resolve_and_appeal_keep_their_ordering` | same | adjudicates or refunds: `test_resolve_refunded_when_worker_fails`, `test_resolve_approved_when_worker_delivers`, `test_case_file_hash_mismatch_refund`, `test_agreement_mismatch_when_terms_rewritten`, `test_tampered_chain_refunds`, `test_missing_definition_of_done_refunds`, `test_anchor_mismatch_when_the_case_file_declares_another_head`, `test_anchor_mismatch_refunds`, `test_anchor_match_allows_adjudication` | reverts (`Not in dispute`): retry exhaustion `test_repeated_raised_rounds_reach_unresolvable` | reverts: `test_unresolvable_keeps_the_anchor_and_recovers_as_in_d4` | reverts |
+| `resolve`, stranger | reverts (`Only parties can resolve`): `test_resolve_requires_party`; live `resolve_by_stranger` | same | same | same | same | same |
+| `appeal` | reverts (`Not adjudicated`) | same | reverts | loser only, once, inside the window: `test_appeal_reruns_and_is_final`, `test_appeal_requires_loser`, `test_appeal_with_new_evidence_updates_case_file`, `test_appeal_without_url_keeps_old_case_file` | covered by the ordering test | `test_unresolvable_recovers_via_timeout_release` |
+| `finalize` | reverts (`Not adjudicated`): live `finalize_out_of_order` | same | same | pays: `test_finalize_pays_winner`, `test_finalize_approved_pays_worker`; appeal-window gate in the same tests | reverts, already paid: `test_finalize_pays_winner` second call path | reverts |
+| `timeout_release` | 7 days not reached: `test_timeout_release_requires_seven_days`; and it cannot undercut a live dispute: `test_timeout_release_cannot_undercut_a_pending_dispute`, `test_dispute_after_timeout_release_is_rejected` | same | reverts while disputed | appeal window must close first | reverts, settled | refunds client: `test_unresolvable_recovers_via_timeout_release`, `test_unresolvable_keeps_the_anchor_and_recovers_as_in_d4` |
+| `timeout_release` after 7 days, funded | pays worker: `test_timeout_release_pays_worker_after_seven_days` | same | n/a once disputed | n/a | n/a | n/a |
+| `timeout_release` with unreadable `created_at` | fails closed: `test_timeout_release_fails_closed_without_created_at` | same | same | same | same | same |
+| `get_deal`, `get_payouts` (views) | readable by anybody, writeable by nobody: every test above reads them | same | same | same | same | same |
+
+Not covered by a live transaction, and said plainly: `appeal`, `timeout_release` after seven
+days, and the `delivered` status were not exercised on D5 in this round. Each is covered in
+direct mode by the tests named in its cell; the live run covered `open_deal`, `dispute`,
+`anchor_milestone`, `resolve`, `finalize` and the seven refusals in Matrix 1.
+
+### Matrix 2: API endpoint x caller
+
+| endpoint | unauthenticated | authenticated party (own session) | authenticated stranger (valid session, not a party) |
+| --- | --- | --- | --- |
+| `POST /api/auth/nonce` | issues a nonce, expires in 5 min: `test_auth_flow_persists_session_and_single_use_nonce` | n/a | n/a |
+| `POST /api/auth/verify` | 401 without a valid signature; 422 on malformed input: `test_login_rejects_a_malformed_address_and_an_oversized_nonce`, `test_auth_flow_persists_session_and_single_use_nonce` | n/a | n/a |
+| `POST /deals` | allowed, and it creates only an empty log; a name for a party is refused: `test_parties_must_be_addresses`, `test_create_deal`, `test_duplicate_deal_rejected` | same | same |
+| `GET /deals/{id}` | public read | `test_dispute_requires_party` fixtures | `test_sealed_deal_chain_still_verifies` reads across sessions |
+| `POST /events` | 401: `test_unsigned_write_is_refused` also covers the no-session case through `event_body` | writes only in its own name: `test_actor_must_match_the_authenticated_session`, `test_forged_signature_is_rejected`, `test_non_party_signer_is_rejected`, replay tests, timestamp tests | 403: `test_non_party_signer_is_rejected` |
+| `GET /deals/{id}/events` | public read | `test_record_events_and_chain` | same |
+| `POST /deals/{id}/seal` | 401: `test_seal_requires_actor_to_be_the_session` | seals only its own deal, and only as itself: `test_seal_freeze_and_head_hash`, `test_seal_requires_actor_to_be_the_session` | 403: `test_seal_requires_actor_to_be_the_session` |
+| `POST /deals/{id}/dispute` | 401 (F16): `test_dispute_requires_a_session` | 200 in its own name: `test_dispute_by_a_party_session_still_works`, `test_dispute_and_case_file` | 401/403: `test_dispute_rejects_a_signer_who_is_not_a_party`, `test_dispute_party_must_be_the_authenticated_session` |
+| `GET /deals/{id}/disputes` | public read | `test_dispute_and_case_file` | same |
+| `GET /deals/{id}/verify` | public read, and it reports chain and signature state separately: `test_verify_reports_chain_and_signatures_separately`, `test_verify_chain_pass`, `test_tamper_detection`, `test_delete_event_breaks_chain`, `test_legacy_unsigned_events_still_verify` | same | same |
+| `GET /deals/{id}/case-file` | public read; this is what validators fetch, so it must be fetchable without a session: `test_case_file_exports_the_signature_and_what_it_covers`, `test_dispute_and_case_file` | same | same |
+
+Gaps this matrix found and closed in this round: F16 (the dispute write had no caller at all)
+and F18 (the fix for F17 would otherwise have broken the two read rows above for pre-D5
+history). Building Matrix 1 found two more, both on `anchor_milestone`, and both now have the
+tests named in their cells: the party gate on the anchor door, and the closed set of milestone
+names. Every other cell was already covered by a test that existed before this section.
+
+### What is still open after D5
+
+- **F5 and F23**: the contract still trusts the case file's self-reported chain. Narrowed
+  (immutable anchor, sealed log, both parties bound to one head before adjudication) but not
+  closed. Closing it means recomputing the chain inside `resolve`.
+- **The hosted recorder's own trust boundary**: signatures prove *who wrote an event*, not
+  that the event is true. An honest record of a false claim about the work is still signed by
+  the party who made it. The contract judges evidence against a commitment, and the commitment
+  was made by the parties.
+- **No revocation for a leaked session token.** A session lives 7 days and is only proof of
+  possession of the key; if the key leaks, the evidence log leaks with it, until the seal.
+  Not fixed here: it needs a nonce/epoch per write or a per-event key, which is a design
+  change rather than a hardening one.

@@ -2,12 +2,15 @@ import { createClient, createAccount } from 'genlayer-js';
 import { studioDevnet } from 'genlayer-js/chains';
 import { readFileSync, writeFileSync } from 'fs';
 import dotenv from 'dotenv';
+import { walletPrivateKey } from './wallet_key.js';
 
 dotenv.config();
 
-const privateKey = process.env.ACCOUNT_PRIVATE_KEY_1;
+// GENLAYER_PRIVATE_KEY (or the legacy ACCOUNT_PRIVATE_KEY_1 alias). The key
+// itself is never logged: it only ever goes into createAccount().
+const privateKey = walletPrivateKey();
 if (!privateKey) {
-    console.error('ACCOUNT_PRIVATE_KEY_1 not found in .env');
+    console.error('No wallet key in the environment: set GENLAYER_PRIVATE_KEY in .env');
     process.exit(1);
 }
 

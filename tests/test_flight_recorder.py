@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from src import db
+from tests.conftest import PARTY_A, PARTY_B, OUTSIDER, event_body
 
 
 def test_create_deal(client):
@@ -14,7 +15,7 @@ def test_create_deal(client):
         json={
             "deal_id": "d1",
             "definition_of_done": {"success": "1000 rows"},
-            "parties": ["a", "b"],
+            "parties": [PARTY_A.address, PARTY_B.address],
         },
     )
     assert resp.status_code == 200
@@ -27,32 +28,26 @@ def test_duplicate_deal_rejected(client):
     payload = {
         "deal_id": "dup",
         "definition_of_done": {"x": 1},
-        "parties": ["a"],
+        "parties": [PARTY_A.address],
     }
     assert client.post("/deals", json=payload).status_code == 200
     assert client.post("/deals", json=payload).status_code == 409
 
 
-def test_event_requires_deal(client):
-    resp = client.post(
-        "/events",
-        json={"deal_id": "missing", "actor": "a", "event_type": "REQUEST"},
-    )
+def test_event_requires_deal(client, recorder):
+    resp = recorder.post("missing", "REQUEST", {"x": 1})
     assert resp.status_code == 404
 
 
-def test_record_events_and_chain(client, deal):
+def test_record_events_and_chain(client, client_b, deal, recorder):
     deal_id = deal["deal_id"]
     for i, etype in enumerate(["REQUEST", "RESPONSE", "DELIVERY"]):
-        resp = client.post(
-            "/events",
-            json={
-                "deal_id": deal_id,
-                "actor": "agentA" if i != 2 else "agentB",
-                "event_type": etype,
-                "payload": {"seq": i},
-            },
-        )
+        # The third event is the worker's, and a write can only be made under the
+        # worker's own session: signing as the other party is not enough.
+        if i != 2:
+            resp = recorder.post(deal_id, etype, {"seq": i})
+        else:
+            resp = recorder.post(deal_id, etype, {"seq": i}, session=client_b)
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["event_hash"]) == 64
@@ -64,27 +59,22 @@ def test_record_events_and_chain(client, deal):
     assert events[2]["previous_event_hash"] == events[1]["event_hash"]
 
 
-def test_verify_chain_pass(client, deal):
+def test_verify_chain_pass(client, deal, recorder):
     deal_id = deal["deal_id"]
     for i in range(3):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "REQUEST", {"i": i})
         assert resp.status_code == 200
     resp = client.get(f"/deals/{deal_id}/verify")
     body = resp.json()
     assert body["verification"] == "PASS"
+    assert body["signature_status"] == "PASS"
     assert body["events"] == 3
 
 
-def test_tamper_detection(client, deal):
+def test_tamper_detection(client, deal, recorder):
     deal_id = deal["deal_id"]
     for i in range(3):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "REQUEST", {"i": i})
         assert resp.status_code == 200
 
     events = client.get(f"/deals/{deal_id}/events").json()
@@ -103,13 +93,10 @@ def test_tamper_detection(client, deal):
     assert body["verification"] == "FAIL"
 
 
-def test_delete_event_breaks_chain(client, deal):
+def test_delete_event_breaks_chain(client, deal, recorder):
     deal_id = deal["deal_id"]
     for i in range(3):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "a", "event_type": "REQUEST", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "REQUEST", {"i": i})
         assert resp.status_code == 200
 
     events = client.get(f"/deals/{deal_id}/events").json()
@@ -132,26 +119,23 @@ def test_dispute_requires_party(client, deal):
     deal_id = deal["deal_id"]
     resp = client.post(
         f"/deals/{deal_id}/dispute",
-        json={"deal_id": deal_id, "party": "stranger", "claim": "I want money"},
+        json={"deal_id": deal_id, "party": OUTSIDER.address, "claim": "I want money"},
     )
     assert resp.status_code == 403
 
 
-def test_dispute_and_case_file(client, deal):
+def test_dispute_and_case_file(client, deal, recorder):
     deal_id = deal["deal_id"]
 
     # Record some events
     for i in range(2):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "REQUEST", {"i": i})
         assert resp.status_code == 200
 
     # File a dispute
     resp = client.post(
         f"/deals/{deal_id}/dispute",
-        json={"deal_id": deal_id, "party": "agentA", "claim": "AgentB delivered only 500 rows"},
+        json={"deal_id": deal_id, "party": PARTY_A.address, "claim": "AgentB delivered only 500 rows"},
     )
     assert resp.status_code == 200
 
@@ -163,24 +147,21 @@ def test_dispute_and_case_file(client, deal):
     assert case["deal_id"] == deal_id
     assert len(case["events"]) == 2
     assert len(case["disputes"]) == 1
-    assert case["disputes"][0]["party"] == "agentA"
+    assert case["disputes"][0]["party"] == PARTY_A.address
     assert case["chain_integrity"]["verification"] == "PASS"
     assert case["definition_of_done"]["success"] == "1000 valid rows"
 
 
-def test_seal_freeze_and_head_hash(client, deal):
+def test_seal_freeze_and_head_hash(client, deal, recorder):
     deal_id = deal["deal_id"]
     for i in range(2):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "agentA", "event_type": "DELIVERY", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "DELIVERY", {"i": i})
         assert resp.status_code == 200
 
     events = client.get(f"/deals/{deal_id}/events").json()
     expected_head = events[-1]["event_hash"]
 
-    resp = client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"})
+    resp = client.post(f"/deals/{deal_id}/seal", json={"actor": PARTY_A.address})
     assert resp.status_code == 200
     body = resp.json()
     assert body["sealed"] is True
@@ -189,16 +170,13 @@ def test_seal_freeze_and_head_hash(client, deal):
     assert client.get(f"/deals/{deal_id}").json()["sealed"] is True
 
     # Idempotent: sealing again returns the same frozen head.
-    again = client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"})
+    again = client.post(f"/deals/{deal_id}/seal", json={"actor": PARTY_A.address})
     assert again.status_code == 200
     assert again.json()["chain_head"] == expected_head
 
     # The seal is what makes the anchored hash final: further appends are
     # rejected with 409 and must not land in the log.
-    rejected = client.post(
-        "/events",
-        json={"deal_id": deal_id, "actor": "agentA", "event_type": "DELIVERY", "payload": {"i": 99}},
-    )
+    rejected = recorder.post(deal_id, "DELIVERY", {"i": 99})
     assert rejected.status_code == 409
     assert rejected.json()["detail"] == "Evidence log sealed after dispute"
     assert len(client.get(f"/deals/{deal_id}/events").json()) == 2
@@ -206,16 +184,13 @@ def test_seal_freeze_and_head_hash(client, deal):
     assert client.post("/deals/nope/seal").status_code == 404
 
 
-def test_sealed_deal_chain_still_verifies(client, deal):
+def test_sealed_deal_chain_still_verifies(client, deal, recorder):
     deal_id = deal["deal_id"]
     for i in range(3):
-        resp = client.post(
-            "/events",
-            json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST", "payload": {"i": i}},
-        )
+        resp = recorder.post(deal_id, "REQUEST", {"i": i})
         assert resp.status_code == 200
 
-    assert client.post(f"/deals/{deal_id}/seal", json={"actor": "agentA"}).status_code == 200
+    assert client.post(f"/deals/{deal_id}/seal", json={"actor": PARTY_A.address}).status_code == 200
 
     # Sealing freezes writes; it must not break verification or case-file export.
     resp = client.get(f"/deals/{deal_id}/verify")
@@ -230,7 +205,15 @@ def test_sealed_deal_chain_still_verifies(client, deal):
     assert len(case["events"]) == 3
 
 
-def test_concurrent_writes_cannot_fork_chain(client, deal):
+def test_concurrent_writes_cannot_fork_chain(client, deal, recorder):
+    """Eight threads race to append; the chain must stay a single line.
+
+    Each thread signs against the head it read, so a thread that lost the race
+    gets a 403 (its signature no longer matches the position it is being written
+    at) and re-signs against the new head. Either way the log must end up as one
+    unbroken chain with no duplicated position, which is what the per-deal lock
+    plus BEGIN IMMEDIATE is for.
+    """
     deal_id = deal["deal_id"]
     n = 8
     barrier = threading.Barrier(n)
@@ -238,17 +221,14 @@ def test_concurrent_writes_cannot_fork_chain(client, deal):
 
     def post(i):
         barrier.wait()
-        resp = client.post(
-            "/events",
-            json={
-                "deal_id": deal_id,
-                "actor": "agentA",
-                "event_type": "REQUEST",
-                "payload": {"i": i, "unique": f"payload-{i}"},
-            },
-        )
-        if resp.status_code != 200:
-            errors.append((i, resp.status_code, resp.text))
+        try:
+            recorder.post_retrying(
+                deal_id,
+                "REQUEST",
+                {"i": i, "unique": f"payload-{i}"},
+            )
+        except AssertionError as exc:
+            errors.append(str(exc))
 
     threads = [threading.Thread(target=post, args=(i,)) for i in range(n)]
     for t in threads:
@@ -261,6 +241,7 @@ def test_concurrent_writes_cannot_fork_chain(client, deal):
     assert len(events) == n
     body = client.get(f"/deals/{deal_id}/verify").json()
     assert body["verification"] == "PASS"
+    assert body["signature_status"] == "PASS"
     assert body["events"] == n
 
     ids = [ev["id"] for ev in events]
@@ -321,7 +302,7 @@ def test_session_survives_app_restart(client, deal):
     """A session issued before a restart still authenticates afterwards.
 
     Reloading src.main re-executes the module (resetting any in-memory state and
-    re-running init_db) and yields a brand-new FastAPI app — a faithful stand-in
+    re-running init_db) and yields a brand-new FastAPI app - a faithful stand-in
     for a worker restart. Because sessions live in SQLite the token survives;
     against the old process-memory dict this reload would log the agent out and
     the assertion below would fail with 401. This is what lets the service run
@@ -331,12 +312,15 @@ def test_session_survives_app_restart(client, deal):
 
     deal_id = deal["deal_id"]
     token = "restart-survivor-token"
-    db.store_session(token, "agentA", datetime.now(timezone.utc) + timedelta(days=7))
+    db.store_session(token, PARTY_A.address, datetime.now(timezone.utc) + timedelta(days=7))
 
+    head = "GENESIS"
     before = client.post(
         "/events",
-        json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST",
-              "payload": {"phase": "before-restart"}},
+        json=event_body(
+            PARTY_A, deal_id, "REQUEST", {"phase": "before-restart"},
+            previous_event_hash=head,
+        ),
         headers={"Authorization": f"Bearer {token}"},
     )
     assert before.status_code == 200, before.text
@@ -347,8 +331,10 @@ def test_session_survives_app_restart(client, deal):
 
     after = restarted.post(
         "/events",
-        json={"deal_id": deal_id, "actor": "agentA", "event_type": "REQUEST",
-              "payload": {"phase": "after-restart"}},
+        json=event_body(
+            PARTY_A, deal_id, "REQUEST", {"phase": "after-restart"},
+            previous_event_hash=before.json()["event_hash"],
+        ),
         headers={"Authorization": f"Bearer {token}"},
     )
     assert after.status_code == 200, after.text
@@ -356,4 +342,7 @@ def test_session_survives_app_restart(client, deal):
     # Both events landed in the same SQLite-backed chain across the restart.
     events = client.get(f"/deals/{deal_id}/events").json()
     assert len(events) == 2
-    assert client.get(f"/deals/{deal_id}/verify").json()["verification"] == "PASS"
+    body = client.get(f"/deals/{deal_id}/verify").json()
+    assert body["verification"] == "PASS"
+    # The restart must not weaken what the signatures prove.
+    assert body["signature_status"] == "PASS"
