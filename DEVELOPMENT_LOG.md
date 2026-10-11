@@ -111,6 +111,27 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   **F18**: putting input bounds on the response models would have made every row written before
   the bounds unreadable, which would turn hardening into data loss, so input types and response
   types are now separate and a test proves pre-D5 history still exports.
+- **Phase 7, docs.** README, JUDGING.md and `index.html` were taken through a
+  claims-versus-reality pass against D5: deployment history and versioning list D5 and mark
+  D4 superseded, the API reference gained the auth column, the event fields, the byte limits,
+  the timestamp bounds and an event-signing section, the case file sample is the shape the
+  recorder actually exports today, and the site's verdict table now lists all four evidence
+  verdicts. Three specific corrections rather than additions:
+  - The README said `dispute()` anchors the case-file hash *not* the chain head, and that the
+    browser flow never anchors. Since D5 the dispute anchors both, and the browser flow does
+    anchor; the paragraph now says so and states the consequence (an empty log cannot be
+    disputed).
+  - The site's hash-checker caption credited the digest to "deal 4 of the previous v2
+    deployment (dispute tx 0x571095fb…)". That transaction anchored the *old hand-written* case
+    file, whose bytes are no longer what `main` serves, so the caption now describes what the
+    check actually does and `EXPECTED_HASH` was regenerated with the file.
+  - "Studio Next" and "studio-dev" were used interchangeably. The product name stays GenLayer
+    Studio Next; the network is studio-dev (chain 61997), and that is now stated once and used
+    consistently. The stale "do not upgrade before the hackathon deadline" instruction is gone,
+    replaced by the actual rule (no major dependency or Python changes in a feature round) plus
+    the `GENVM_VERSION` pin and why it exists.
+  - `flight_recorder.db` was already in `.gitignore` and `git ls-files` shows no database
+    tracked, so no untracking was needed; verified rather than assumed.
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 
