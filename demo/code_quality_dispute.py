@@ -11,7 +11,7 @@ import time
 import urllib.request
 import urllib.error
 
-from signed_client import Recorder, key_from_seed
+from signed_client import Recorder, api_url, key_from_seed
 
 FLIGHT_RECORDER_URL = os.environ.get("FLIGHT_RECORDER_URL", "http://localhost:8000")
 
@@ -22,7 +22,7 @@ FREELANCER = key_from_seed("flight-recorder-demo-freelancer")
 
 def api_call(method, path, data=None):
     """Helper for the two endpoints that are not identity-bound."""
-    url = FLIGHT_RECORDER_URL + path
+    url = api_url(FLIGHT_RECORDER_URL, path)
     headers = {"Content-Type": "application/json"}
 
     if data is not None:
@@ -32,7 +32,8 @@ def api_call(method, path, data=None):
         req = urllib.request.Request(url, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req) as resp:
+        # api_url() has already refused anything that is not http(s).
+        with urllib.request.urlopen(req) as resp:  # nosec B310
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         return {"error": e.code, "message": e.read().decode("utf-8")}
@@ -78,11 +79,17 @@ def main():
     print("\n3. Sealing the log and filing a dispute...")
     chain_head = recorder.seal(CLIENT, deal_id)
     print(f"   Evidence log sealed at chain_head: {chain_head}")
-    api_call("POST", f"/deals/{deal_id}/dispute", {
-        "deal_id": deal_id,
-        "party": CLIENT.address,
-        "claim": "Code does not pass tests and violates PEP8 standards",
-    })
+    # A dispute is evidence, so it needs the same binding as an event write: the
+    # party named must be the address behind the session token.
+    recorder.call(
+        "POST", f"/deals/{deal_id}/dispute",
+        {
+            "deal_id": deal_id,
+            "party": CLIENT.address,
+            "claim": "Code does not pass tests and violates PEP8 standards",
+        },
+        token=recorder.login(CLIENT),
+    )
     print("   Dispute filed")
 
     print("\n4. Exporting case file...")

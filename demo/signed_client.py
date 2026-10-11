@@ -12,6 +12,7 @@ against `http://localhost:8000`.
 import hashlib
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -19,6 +20,22 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 DOMAIN_TAG = "flight-recorder-event-v1"
+
+
+def api_url(base_url: str, path: str) -> str:
+    """Resolve a request target, and refuse anything that is not http(s).
+
+    The base URL comes from FLIGHT_RECORDER_URL, an environment variable. A client
+    that will open whatever string it is handed also opens file: and other local
+    schemes, so a stray or hostile value would turn a demo into a local file reader.
+    The scheme is checked rather than the host, because the host legitimately varies
+    (localhost, a tunnel, the deployed recorder) while the scheme never should.
+    """
+    url = base_url.rstrip("/") + path
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise SystemExit(f"refusing to call a non-http(s) URL: {url}")
+    return url
 
 
 def key_from_seed(seed: str):
@@ -52,14 +69,15 @@ class Recorder:
         self.tokens: dict[str, str] = {}
 
     def _call(self, method: str, path: str, data=None, token: str | None = None):
-        url = self.base_url + path
+        url = api_url(self.base_url, path)
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         body = json.dumps(data).encode("utf-8") if data is not None else None
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req) as resp:
+            # The scheme is validated to http/https by api_url() above.
+            with urllib.request.urlopen(req) as resp:  # nosec B310
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             raise SystemExit(f"{method} {path} -> HTTP {e.code}: {e.read().decode('utf-8')}")

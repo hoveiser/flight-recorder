@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from src import db
-from tests.conftest import PARTY_A, PARTY_B, event_body
+from tests.conftest import PARTY_A, PARTY_B, OUTSIDER, event_body
 
 
 def test_create_deal(client):
@@ -15,7 +15,7 @@ def test_create_deal(client):
         json={
             "deal_id": "d1",
             "definition_of_done": {"success": "1000 rows"},
-            "parties": ["a", "b"],
+            "parties": [PARTY_A.address, PARTY_B.address],
         },
     )
     assert resp.status_code == 200
@@ -28,7 +28,7 @@ def test_duplicate_deal_rejected(client):
     payload = {
         "deal_id": "dup",
         "definition_of_done": {"x": 1},
-        "parties": ["a"],
+        "parties": [PARTY_A.address],
     }
     assert client.post("/deals", json=payload).status_code == 200
     assert client.post("/deals", json=payload).status_code == 409
@@ -119,7 +119,7 @@ def test_dispute_requires_party(client, deal):
     deal_id = deal["deal_id"]
     resp = client.post(
         f"/deals/{deal_id}/dispute",
-        json={"deal_id": deal_id, "party": "stranger", "claim": "I want money"},
+        json={"deal_id": deal_id, "party": OUTSIDER.address, "claim": "I want money"},
     )
     assert resp.status_code == 403
 

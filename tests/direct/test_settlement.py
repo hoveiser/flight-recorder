@@ -974,3 +974,34 @@ def test_unresolvable_keeps_the_anchor_and_recovers_as_in_d4(direct_vm, direct_d
     payouts = json.loads(c.get_payouts())
     assert len(payouts) == 1
     assert payouts[0]["to"].lower() == to_hex(direct_alice).lower()
+
+
+def test_anchor_milestone_is_not_for_a_stranger(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """Coverage gap found while writing the AUDIT.md matrix: the party gate on
+    `anchor_milestone` had no test of its own.
+
+    `dispute` refuses a stranger, and the anchor is written there too, but the
+    separate anchor door is a public write with its own check. Both doors must
+    refuse the same way, or a stranger can put a head on a deal it is not part of
+    and every later ANCHOR_MISMATCH is measured against a value nobody agreed to.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert("Only parties"):
+        c.anchor_milestone(did, "delivery", CHAIN_HEAD)
+    assert json.loads(c.get_deal(did))["milestones"] == {}
+
+
+def test_anchor_milestone_refers_only_to_the_three_known_milestones(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The other gap in the same row of the matrix: the milestone name itself.
+
+    An arbitrary key would still land in `milestones` and be read back as if it
+    were evidence, so the set is closed at delivery, dispute and close.
+    """
+    c = direct_deploy(CONTRACT_PATH)
+    did = _open(c, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("Invalid milestone"):
+        c.anchor_milestone(did, "receipt", CHAIN_HEAD)
+    assert json.loads(c.get_deal(did))["milestones"] == {}

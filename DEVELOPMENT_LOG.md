@@ -74,6 +74,43 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   returns the env value before it queries the network and that the pytest plugin leaves
   `sdk_version` unset, so nothing overrides it.
   Green on `cded8aa`: **88 passed, 0 failed** in 27.59s (53 direct-mode, 35 off-chain).
+- **Phase 5, D5 and live proof.** Deployed **D5**: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`
+  on chain 61997 (deploy tx
+  `0xee4f5955ecded5fd6d7ea493fb21dc79e2a6ba8aa5a853d6df457cb2ee10d500`, verified through the
+  explorer JSON API: FINALIZED, `to_address` is the new contract). D1 to D4 untouched; D4's
+  address was copied out of `CONTRACT_ADDRESS.txt` before the deploy overwrote it. The final
+  step of the deploy script, `getContractSchema`, fails with a studio-dev backend error
+  (`psycopg2.ProgrammingError: can't adapt type 'dict'`) after the address is written; reads and
+  writes on the contract work, so this is a node-side bug and is recorded rather than worked
+  around. `scripts/e2e_demo.js` ran the full lifecycle on D5 with signed events and a sealed
+  head, and `scripts/adversarial_live.js` ran ten adversarial cases (10/10 passed) with every
+  hash read back from the explorer.
+- Two facts learned by measuring rather than assuming, both now encoded in the scripts:
+  - A GenLayer transaction that the contract refuses still ends `statusName FINALIZED` with
+    `result_name MAJORITY_AGREE`. Only `txExecutionResultName` separates `FINISHED_WITH_RETURN`
+    from `FINISHED_WITH_ERROR`, and the transaction record carries no revert string, so the
+    exact rejection messages are asserted in direct mode while the live run asserts refusal
+    plus "the deal did not move".
+  - A write's fee is not one number: `estimateTransactionFees()` returns about 0.1 GEN while
+    `estimateTransactionFeesForWrite()` priced `resolve` on D5 at 761268000010352 wei. The
+    recorded `fee-profile.json` allocation names a recipient from another contract, and the
+    node rejects an allocation that does not match a message the transaction actually produces
+    (`MessageNoMatchingAllocation`), so `e2e_demo.js` now asks the node to price `resolve` and
+    keeps the profile only as a fallback.
+- **Phase 6, security review.** Scans that ran and what they said are in AUDIT.md: L2
+  lightweight review (0 findings), bandit (3 medium B310 to 0 medium after F19), pip-audit
+  (no known vulnerabilities), `npm audit` (0 vulnerabilities), and a grep-based secret scan of
+  the tree and of all 107 revisions (no secret values; `.env` was never committed). Findings
+  F16 to F24 are recorded there, and each gap the coverage matrices exposed got a regression
+  test: `tests/test_api_hardening.py` (14 tests) for the API, two new direct tests for the
+  `anchor_milestone` party gate and the closed set of milestone names. Suite is now 50
+  off-chain and 55 direct-mode collected.
+- The most consequential of those is **F16**: `POST /deals/{id}/dispute` used to accept a
+  typed-in `party` with no session at all, so anyone could write a claim into anyone's evidence
+  record. It now carries the same binding as an event write. Fixing it raised a second issue,
+  **F18**: putting input bounds on the response models would have made every row written before
+  the bounds unreadable, which would turn hardening into data loss, so input types and response
+  types are now separate and a test proves pre-D5 history still exports.
 
 ### Sep 26 — v4 deployed (D4): F1–F3 closed, validator payload depth, appeal evidence, session persistence
 

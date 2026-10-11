@@ -77,7 +77,9 @@ class SessionClient(TestClient):
         headers = dict(kwargs.pop("headers", None) or {})
         path = str(url).split("?")[0]
         needs_session = method.upper() == "POST" and (
-            path == "/events" or path.rstrip("/").endswith("/seal")
+            path == "/events"
+            or path.rstrip("/").endswith("/seal")
+            or path.rstrip("/").endswith("/dispute")
         )
         if needs_session and not any(key.lower() == "authorization" for key in headers):
             headers["Authorization"] = f"Bearer {self.token}"

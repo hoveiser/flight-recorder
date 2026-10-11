@@ -287,3 +287,94 @@ This is the same shape as the v3-audit run: the evidence refund happens inside
   `package.json` with no events so the new payload depth is never reached (G2), and
   never appeals (G7). Those four are covered by the direct-mode suite in
   `tests/direct/test_settlement.py`, not by this run.
+
+
+---
+
+# E2E demo run 2026-10-10T22:08:40.617Z
+# Settlement E2E Demo Summary
+
+- Contract: 0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1
+- Network: studio-dev
+- Worker: 0x1111111111111111111111111111111111111111
+- On-chain deal: 4 (demo_scraper_1791670000220), anchored delivery head 0a0320cd936e154dd87ca0cffacdff4e65d63568dc06c4fc0c6ee7919f338c63
+- Off-chain deal: demo_scraper_1791670040310 (2 signed events, sealed at 0a0320cd936e154dd87ca0cffacdff4e65d63568dc06c4fc0c6ee7919f338c63)
+- Case file: https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json
+- Note: this static case file carries no definition_of_done, so the expected
+  outcome is the DISAGREEMENT path (labeled AGREEMENT_MISMATCH) refunding the
+  client inside resolve(). It exercises the pipeline, not a happy verdict.
+- Finalize: not needed, resolve() already settled the deal (status refunded)
+- Final deal: {"client": "0x3de43AA2f7162c80af98abe78222aE0Cdf83c506", "worker": "0x1111111111111111111111111111111111111111", "external_deal_id": "demo_scraper_1791670000220", "agreement_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "amount": 100000000000000000, "status": "refunded", "milestones": {"delivery": "0a0320cd936e154dd87ca0cffacdff4e65d63568dc06c4fc0c6ee7919f338c63"}, "verdict": "AGREEMENT_MISMATCH", "verdict_at": 1791670084, "appeal_window_sec": 300, "appeals_used": 0, "fetch_failures": 0, "case_file_hash": "2828c1d269bd9c80d634131ec107ac69f1cfc3bf1f98d24c112c825c8acd7902", "payout_status": "paid", "created_at_ts": 1791670002, "case_file_url": "https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json", "reasoning": "Case file has no definition_of_done"}
+- Final payouts: [{"to": "0x3de43AA2f7162c80af98abe78222aE0Cdf83c506", "amount": 100000000000000000}, {"to": "0x3de43AA2f7162c80af98abe78222aE0Cdf83c506", "amount": 100000000000000000}, {"to": "0x3de43AA2f7162c80af98abe78222aE0Cdf83c506", "amount": 100000000000000000}]
+- Total fees spent: 200761275200031056 wei
+
+## Transactions
+
+| Step | TX hash | Explorer | Fee (wei) |
+| --- | --- | --- | ---: |
+| open_deal | 0x7c0e0d59bfb21086b0971c67e04889ce6d0909ad19b76ef916b1cd3a19f30951 | https://explorer-studio-dev.genlayer.com/tx/0x7c0e0d59bfb21086b0971c67e04889ce6d0909ad19b76ef916b1cd3a19f30951 | 100000000000010352 |
+| dispute | 0x20a2795c8012f38a88d9b0aeb4b668d0cf91ba8aa8eca26a49e5e05111ca9fcf | https://explorer-studio-dev.genlayer.com/tx/0x20a2795c8012f38a88d9b0aeb4b668d0cf91ba8aa8eca26a49e5e05111ca9fcf | 100000000000010352 |
+| resolve | 0xb36dac933c5665116f4802fd657ab4d438b8797448d841913dd490429f575e67 | https://explorer-studio-dev.genlayer.com/tx/0xb36dac933c5665116f4802fd657ab4d438b8797448d841913dd490429f575e67 | 761275200010352 |
+
+---
+
+# Adversarial live run against D5, 2026-10-10
+
+Contract D5: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` on studio-dev (chain 61997).
+Script: `node scripts/adversarial_live.js` (re-runnable; it opens a fresh deal each run).
+
+Roles: the deal client is the project .env throwaway key (the account that deployed D5),
+the counterparty is the publicly committed GenLayer devnet test key that already lives in
+`gltest.config.yaml`, and the stranger is a key derived from a fixed seed so the run is
+reproducible. The stranger is funded with test GEN by the client, because being refused
+still costs the caller a transaction fee.
+
+How refusal is measured rather than assumed: on this chain a contract that raises still
+ends `statusName FINALIZED` with `result_name MAJORITY_AGREE` (the validators agreed on
+the outcome), and the transaction record carries no revert string. The field that
+separates an accepted write from a refused one is `txExecutionResultName`:
+FINISHED_WITH_RETURN when the method ran, FINISHED_WITH_ERROR when it raised. Every case
+below therefore asserts two things: the call did not execute, and the deal did not move.
+The guard is the whole deal read back field by field against the state captured a moment
+before the attempt. The exact rejection message for each guard is asserted in the
+direct-mode suite, where expect_revert() can see the string.
+
+Every transaction hash in this table was checked against the explorer JSON API
+(`https://explorer-studio-dev.genlayer.com/api/transactions/{hash}`) by the run itself; the
+explorer column is what that API reported. The first run of this script (deal 5) is not used
+as evidence here: one case was marked failed by a stale snapshot in the harness rather than
+by the contract, and the fixed harness was re-run. The deals those runs left open were
+settled afterwards (`node scripts/settle_open_deals.js 2 5 6`), and all three landed on
+AGREEMENT_MISMATCH and refunded the client: these runs open their deals with an agreement
+hash of 64 zeros, so the case file's own terms can never match what was committed. That is
+the demo's arrangement, not a contract fault, and it is the ordering the direct-mode tests
+assert: the agreement gate runs before the anchor gate.
+
+| case | actor | call | wanted | contract guard (asserted in direct mode) | tx | execution | explorer | result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| open_deal | client | open_deal | success | n/a (setup) | `0x0eab0b12a415dae0286cb5e0d9fac539310bb42395bfe452d6231fd3ff7f63d0` | FINISHED_WITH_RETURN | FINALIZED | pass |
+| missing_head | worker | dispute | revert | chain_head must be 64 lowercase hex characters | `0x70987cba135cad9af59713d42c6be81890f79aaf53f27a0e8c7f50290a86a192` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| non_party_dispute | stranger | dispute | revert | Only parties | `0xae0e1e5ab6d616b82febf6e654fea52345c81b7d9a9e194d5f39d6d8330343d8` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| anchor_head_a | worker | anchor_milestone | success | n/a (setup: the counterparty anchors first) | `0x8ebccfab1a56935e2654ac7b74db6313373e33ebe5687e1576777830a3bdde46` | FINISHED_WITH_RETURN | FINALIZED | pass |
+| wrong_head_after_anchor | client | dispute | revert | ANCHOR_MISMATCH: chain head does not match the anchored delivery head | `0x258fb81851604fd57b28fae1e3ae486e3bfab5859b8d3eecc2724cd44e4a072c` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| anchor_overwrite | worker | anchor_milestone | revert | Milestone already anchored | `0x052327a79c59999e6f94c8cfb36ae8b398d28ca6e4be0e58a0b0a8031073ef1c` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| finalize_out_of_order | client | finalize | revert | Not adjudicated | `0x46703902d492f3590a4eddc5b0c351eefb371f6fb753d1b3676f522be2e9bbb6` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| resolve_by_stranger | stranger | resolve | revert | Only parties can resolve | `0xe707c55468d98bc8323ce0082a628574b8584e106cb186b33f7d36d1cb892790` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| zero_value_open_deal | client | open_deal | revert | open_deal requires payable value | `0xb354bd22fd4fe1987eb8954e736f15f3a6e46bf2cf8171d2a6a5c2f75325ea1b` | FINISHED_WITH_ERROR | FINALIZED | pass |
+| honest_dispute_with_anchored_head | client | dispute | success | n/a (the head that is on record is accepted) | `0x7c9f1f3c9102e1efbbaebde2597040291ba90288bca5cce45bf4e2d696c520b1` | FINISHED_WITH_RETURN | FINALIZED | pass |
+
+## Settling the deals those runs left open
+
+`node scripts/settle_open_deals.js 2 5 6`. Each hash below was read back from the
+explorer JSON API by the script itself, and the deal state was re-read after every
+transaction rather than inferred from the transaction status.
+
+| deal | why it was open | call | tx | explorer | outcome |
+| --- | --- | --- | --- | --- | --- |
+| 2 | opened by the second e2e run before that script looked its deal id up, so its dispute went to deal 1 and this one stayed funded | dispute | `0x93d3efd48881cde9186824318aee4c5f0fdee1a102f9ae6fa3b3a7c1f2e598b3` | FINALIZED | status disputed, delivery anchor written from the head that run had sealed |
+| 2 | | resolve | `0x5d7ac9b27ea4ab8211f02656b360ec100a97687b5c9cac3a841e5c3dba3313db` | FINALIZED | AGREEMENT_MISMATCH, refunded, payout paid ("Case file has no definition_of_done") |
+| 5 | adversarial run 1, left disputed after its honest dispute | resolve | `0x01b8686bafde54e4fdb9ad9deb1f5cef83dba5b3ba68e5d717cd1c2466c73619` | FINALIZED | AGREEMENT_MISMATCH, refunded, payout paid ("Case file terms do not match the anchored agreement") |
+| 6 | adversarial run 2 (the recorded run), left disputed on purpose | resolve | `0x940c0fb5103df00977bf3fb9395d6f1fa711f509c48b020ea090be2880019e26` | FINALIZED | AGREEMENT_MISMATCH, refunded, payout paid |
+
+After this, every deal on D5 is in a settled state and no test escrow is locked: `get_payouts()`
+returns six refunds of 100000000000000000 wei, all to `0x3de43AA2f7162c80af98abe78222aE0Cdf83c506`.

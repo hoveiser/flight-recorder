@@ -1,27 +1,38 @@
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from . import db
-from .models import EventCreate, Event, DealCreate, Deal, DisputeCreate, Dispute
+from .models import (
+    EventCreate,
+    Event,
+    DealCreate,
+    Deal,
+    DisputeCreate,
+    Dispute,
+    ADDRESS_PATTERN,
+    NONCE_MAX_LENGTH,
+    SIGNATURE_MAX_LENGTH,
+)
 from .hash_chain import (
     compute_payload_hash,
     compute_event_hash,
     compute_agreement_hash,
     canonical_event_message,
+    canonical_json,
     EVENT_SIGN_DOMAIN,
     EVENT_HASH_VERSION_SIGNED,
     GENESIS,
 )
 
-app = FastAPI(title="Flight Recorder", version="0.3.0")
+app = FastAPI(title="Flight Recorder", version="0.4.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,9 +73,35 @@ class SealBody(BaseModel):
 
 
 class AuthVerify(BaseModel):
-    address: str
-    signature: str
-    nonce: str
+    # Bound before any cryptographic work: recovering a signer from an unbounded
+    # blob is work that anybody can hand to the server for free.
+    address: Annotated[str, Field(pattern=ADDRESS_PATTERN)]
+    signature: Annotated[str, Field(min_length=64, max_length=SIGNATURE_MAX_LENGTH)]
+    nonce: Annotated[str, Field(min_length=1, max_length=NONCE_MAX_LENGTH)]
+
+
+# Byte budgets for the free-form parts of a write. The text fields have their own
+# limits in models.py; these cover the nested dictionaries, which are what an
+# agent actually fills in. A payload is hashed, stored and later re-hashed by
+# validators, so an unbounded one is unbounded work for everyone downstream.
+MAX_EVENT_PAYLOAD_BYTES = 32768
+MAX_EVENT_METADATA_BYTES = 8192
+MAX_DEFINITION_OF_DONE_BYTES = 8192
+
+
+def _bounded_json_size(value: dict, limit: int, field: str) -> None:
+    """Refuse a caller-supplied dictionary that is too large to be evidence.
+
+    Measured on the canonical encoding, because that is the exact byte string the
+    server hashes: counting the dict's Python repr would accept a payload whose
+    digest input is bigger than the limit claims.
+    """
+    try:
+        rendered = canonical_json(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{field} is not JSON-serialisable")
+    if len(rendered.encode("utf-8")) > limit:
+        raise HTTPException(400, f"{field} is larger than {limit} bytes")
 
 
 def _require_session(authorization: Optional[str]) -> str:
@@ -181,6 +218,7 @@ def auth_verify(body: AuthVerify):
 
 @app.post("/deals", response_model=Deal)
 def create_deal(deal_in: DealCreate):
+    _bounded_json_size(deal_in.definition_of_done, MAX_DEFINITION_OF_DONE_BYTES, "definition_of_done")
     if db.get_deal(deal_in.deal_id) is not None:
         raise HTTPException(409, "Deal already exists")
     deal = Deal(
@@ -205,6 +243,8 @@ def get_deal(deal_id: str):
 @app.post("/events", response_model=Event)
 def record_event(event_in: EventCreate, authorization: Optional[str] = Header(default=None)):
     session_address = _require_session(authorization)
+    _bounded_json_size(event_in.payload, MAX_EVENT_PAYLOAD_BYTES, "payload")
+    _bounded_json_size(event_in.metadata, MAX_EVENT_METADATA_BYTES, "metadata")
     with _deal_write_lock(event_in.deal_id):
         deal = db.get_deal(event_in.deal_id)
         if deal is None:
@@ -304,12 +344,23 @@ def seal_deal(
 
 
 @app.post("/deals/{deal_id}/dispute", response_model=Dispute)
-def file_dispute(deal_id: str, dispute_in: DisputeCreate):
+def file_dispute(deal_id: str, dispute_in: DisputeCreate, authorization: Optional[str] = Header(default=None)):
+    """Record a party's claim in the case file.
+
+    This write used to be the one unauthenticated write left in the API: it checked
+    that `party` was on the deal, but `party` is just a string the caller types, so
+    anyone could have written a claim into anyone's evidence record. A dispute is
+    evidence, so it carries the same binding as an event: a session, the party named
+    must be on the deal, and that party must be the session's own address.
+    """
+    session_address = _require_session(authorization)
     deal = db.get_deal(deal_id)
     if deal is None:
         raise HTTPException(404, "Deal not found")
     if dispute_in.party not in deal.parties:
         raise HTTPException(403, "Only a party to the deal may file a dispute")
+    if dispute_in.party.lower() != session_address.lower():
+        raise HTTPException(403, "party does not match the authenticated session")
 
     dispute = Dispute(
         id=0,
