@@ -375,7 +375,7 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
     ├── tests/
     │   ├── test_flight_recorder.py  # Off-chain tests (14 tests)
     │   ├── test_signed_events.py    # Signature and replay tests (18 tests)
-    │   ├── test_api_hardening.py    # API guard tests, findings F16-F19 (14 tests)
+    │   ├── test_api_hardening.py    # API guard tests, findings F16-F19 (15 tests)
     │   ├── test_agreement_hash_canonicalization.py  # Cross-runtime hash tests (3 tests)
     │   └── direct/test_settlement.py # Direct-mode tests (55 tests)
     ├── demo/

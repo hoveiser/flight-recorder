@@ -74,6 +74,8 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   returns the env value before it queries the network and that the pytest plugin leaves
   `sdk_version` unset, so nothing overrides it.
   Green on `cded8aa`: **88 passed, 0 failed** in 27.59s (53 direct-mode, 35 off-chain).
+  Final head of the branch, `5dd34c8`: **105 passed, 0 failed** in 27.20s
+  (55 direct-mode, 50 off-chain: 14 recorder, 18 signing, 15 hardening, 3 canonicalization).
 - **Phase 5, D5 and live proof.** Deployed **D5**: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`
   on chain 61997 (deploy tx
   `0xee4f5955ecded5fd6d7ea493fb21dc79e2a6ba8aa5a853d6df457cb2ee10d500`, verified through the
@@ -102,7 +104,7 @@ Branch `d5-signed-events-anchor`. Nothing deployed yet; D4
   (no known vulnerabilities), `npm audit` (0 vulnerabilities), and a grep-based secret scan of
   the tree and of all 107 revisions (no secret values; `.env` was never committed). Findings
   F16 to F24 are recorded there, and each gap the coverage matrices exposed got a regression
-  test: `tests/test_api_hardening.py` (14 tests) for the API, two new direct tests for the
+  test: `tests/test_api_hardening.py` (15 tests) for the API, two new direct tests for the
   `anchor_milestone` party gate and the closed set of milestone names. Suite is now 50
   off-chain and 55 direct-mode collected.
 - The most consequential of those is **F16**: `POST /deals/{id}/dispute` used to accept a
