@@ -98,10 +98,11 @@ async function runHappy() {
   console.log(`[happy] declared_head=${evidence.declaredHead}`);
   const { id, open } = await createOnchainDeal(`demo_happy_${Date.now()}`, 300, evidence.agreementHash);
   // The dispute anchors a head, and from D5 on that anchor is immutable for the
-  // deal, so it must be the head the fetched evidence declares. The off-chain
-  // recorder's own seal is what produces such a head in the live flow (see the
-  // anchor scenario and the browser page); here the served case file is the
-  // record being judged, and its declared head is the only honest anchor.
+  // deal. Since D6 the contract recomputes the chain itself and pays only if its
+  // own digest equals the anchor, so the anchored value must be the head the
+  // fetched events actually produce. For this published case file the declared
+  // head and the recomputable head are the same value (a genuine v2 chain), which
+  // is why anchoring evidence.declaredHead here still settles APPROVED.
   const dispute = await write('dispute', [id, HAPPY_URL, evidence.digest, evidence.declaredHead], 0n, 'happy.dispute');
   const resolve = await write('resolve', [id], 0n, 'happy.resolve');
   let deal = await readDeal(id);
