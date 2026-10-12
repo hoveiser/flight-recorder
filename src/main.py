@@ -216,6 +216,23 @@ def auth_verify(body: AuthVerify):
     return {"session_token": token, "expires_at": session_expires.isoformat()}
 
 
+@app.post("/api/auth/logout")
+def auth_logout(authorization: Optional[str] = Header(default=None)):
+    """Revoke the caller's session token immediately.
+
+    Idempotent and deliberately unauthenticated-by-presence: whatever bearer
+    token is presented is removed from the store, and the response is the same
+    whether the token existed or not, so it cannot be used to probe for live
+    sessions. A signed-out token fails the next session check with a 401, so
+    logout actually shortens a session's lifetime rather than being cosmetic.
+    """
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            db.delete_session(token)
+    return {"logged_out": True}
+
+
 @app.post("/deals", response_model=Deal)
 def create_deal(deal_in: DealCreate):
     _bounded_json_size(deal_in.definition_of_done, MAX_DEFINITION_OF_DONE_BYTES, "definition_of_done")

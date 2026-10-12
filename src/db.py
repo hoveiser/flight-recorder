@@ -337,3 +337,19 @@ def get_session(token: str) -> Optional[dict]:
         "address": row["address"],
         "expires_at": datetime.fromisoformat(row["expires_at"]),
     }
+
+
+def delete_session(token: str) -> None:
+    """Revoke a session token immediately. Idempotent.
+
+    Logout removes the row, so a token that was valid a moment ago stops working
+    on the very next request rather than living out its seven-day expiry. This is
+    the one place a session's lifetime can be cut short on purpose; a stolen or
+    shared token becomes useless as soon as the real holder logs out, and the
+    signed-event flow is untouched because recording an event only ever reads a
+    session, never creates one.
+    """
+    conn = get_conn()
+    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
