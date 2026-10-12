@@ -1,4 +1,4 @@
-// Adversarial live run against D5 on studio-dev (chain 61997).
+// Adversarial live run against D6 on studio-dev (chain 61997).
 //
 // Every case here is something a party or a stranger would gain by doing, run
 // against the real contract with real transactions. Each case asserts two things:
@@ -28,7 +28,7 @@
 //            the run is reproducible and no address is lost.
 //
 // Usage: node scripts/adversarial_live.js
-// Reads the contract address from CONTRACT_ADDRESS.txt (which must be D5).
+// Reads the contract address from CONTRACT_ADDRESS.txt (which must be D6).
 import { createClient, createAccount } from 'genlayer-js';
 import { studioDevnet } from 'genlayer-js/chains';
 import { createHash } from 'crypto';
@@ -41,7 +41,7 @@ dotenv.config();
 
 const CONTRACT_ADDRESS = readFileSync('CONTRACT_ADDRESS.txt', 'utf-8').trim();
 const CASE_FILE_URL = process.env.CASE_FILE_URL
-  || 'https://raw.githubusercontent.com/hoveiser/flight-recorder/d5-signed-events-anchor/demo/case_files/happy_path.json';
+  || 'https://raw.githubusercontent.com/hoveiser/flight-recorder/main/demo/case_files/happy_path.json';
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const CLIENT = createAccount(walletPrivateKey());
@@ -162,6 +162,22 @@ async function caseRun(name, actor, functionName, args, value, want, message, ch
   return row;
 }
 
+async function openFreshDeal(tag, agreementHash) {
+  // Open a deal funded with 0.1 GEN whose agreement is a caller-supplied hash,
+  // then find its id on chain by the unique external id. The open tx is verified
+  // through the explorer like every other write in this run.
+  const externalId = `${tag}_${Date.now()}`;
+  const hash = await submit('client', 'open_deal', [externalId, agreementHash, WORKER.address, 300],
+    100000000000000000n, `${tag}.open_deal`);
+  await settled(clients.client, hash, `${tag}.open_deal`);
+  await verifyTx(hash);
+  for (let id = 1; id <= 80; id += 1) {
+    const deal = await readDeal(clients.client, id);
+    if (deal && deal.external_deal_id === externalId) return id;
+  }
+  throw new Error(`${tag}: no deal with external id ${externalId}`);
+}
+
 async function main() {
   log(`contract ${CONTRACT_ADDRESS}`);
   log(`client   ${CLIENT.address}`);
@@ -278,6 +294,45 @@ async function main() {
       if (now.milestones?.delivery !== HEAD_A) return `anchor is ${now.milestones?.delivery}`;
       if (now.case_file_hash !== digest) return `anchored case file hash is ${now.case_file_hash}`;
       state.final = now;
+      return null;
+    });
+
+  // ---- D6: the contract recomputes the chain; prove that gate live ----
+  //
+  // The published happy path is a genuine v2 chain whose events recompute to its
+  // declared head (33d588...). Below, the file is opened against that agreement,
+  // then a dispute anchors a delivery head the events CANNOT produce. resolve()
+  // re-fetches the public file, recomputes the chain itself, and lands on
+  // CHAIN_MISMATCH: the escrow returns to the client and the model is never
+  // asked to judge. This is the case-file-independence the round added.
+  //
+  // The structural tamper variants (edited payload, reorder, drop, truncate,
+  // append-after-anchor, duplicated event, tampered signature, wrong field type,
+  // unknown version, event-count ceiling) are proven deterministically by the
+  // golden vectors run through this same contract source in the direct-mode suite
+  // (tests/direct/test_chain_recompute.py). Serving tampered evidence to the live
+  // validator network would require hosting a mutated public case file, which is
+  // out of scope for this run; the live proof here covers the anchor-vs-recompute
+  // decision on real, validator-fetched bytes.
+  const happyAgreement = JSON.parse(served).agreement_hash;
+  const chainDealId = await openFreshDeal('adv_chain', happyAgreement);
+  await caseRun('chain_anchor_wrong_head', 'client', 'dispute', [chainDealId, CASE_FILE_URL, digest, HEAD_B],
+    0n, 'success', 'n/a (dispute anchors a head the events cannot produce)', async () => {
+      const now = await readDeal(clients.client, chainDealId);
+      if (now.status !== 'disputed') return `status is ${now.status}`;
+      if (now.milestones?.delivery !== HEAD_B) return `anchor is ${now.milestones?.delivery}`;
+      return null;
+    });
+  await caseRun('chain_mismatch_refunds', 'client', 'resolve', [chainDealId], 0n, 'success',
+    'n/a (resolve recomputes; verdict CHAIN_MISMATCH)', async () => {
+      const now = await readDeal(clients.client, chainDealId);
+      if (now.verdict !== 'CHAIN_MISMATCH') return `verdict is ${now.verdict}`;
+      if (now.status !== 'refunded') return `status is ${now.status}`;
+      const payouts = JSON.parse((await clients.client.readContract({
+        address: CONTRACT_ADDRESS, functionName: 'get_payouts', args: [],
+      })) || '[]');
+      if (payouts.length < 1) return 'no payout recorded';
+      state.chainMismatch = { deal: now, payouts };
       return null;
     });
 

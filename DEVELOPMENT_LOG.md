@@ -1,5 +1,153 @@
 # Flight Recorder - Development Log
 
+### Oct 12 - v6 work started (D6 branch): the contract recomputes the hash chain
+
+Branch `d6-chain-recompute`. D5 (`0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`,
+studio-dev chain 61997) stays live and untouched, along with D1 to D4.
+
+This round closes F5 and F23: the settlement contract no longer trusts the case
+file's self-attested `chain_integrity.verification` flag or its self-declared
+head. It recomputes the chain itself and refuses to adjudicate unless its own
+computation agrees with the head anchored on-chain at dispute time.
+
+#### Canonical serialization and hash formula (the single source of truth)
+
+Everything below is defined once in `src/hash_chain.py` and mirrored byte for
+byte inside the contract. `tests/golden/chain_vectors.json` pins it: the
+contract's output must equal the vectors exactly, and the vectors are produced
+by the real Python implementation, not hand-written.
+
+Canonical JSON (`canonical_json`): `json.dumps(obj, sort_keys=True,
+separators=(",", ":"))` with the default `ensure_ascii=True`. That means keys
+are sorted recursively, there is no whitespace after `,` or `:`, and every
+non-ASCII character is escaped as a `\uXXXX` sequence. This is the exact byte
+string that is hashed. It is deliberately the escaped form: the off-chain
+recorder computed every stored `payload_hash` with it. The transport is
+different and must not be confused with the digest input. The case file is
+served by Starlette with `ensure_ascii=False` (literal UTF-8), but the contract
+parses that body back into a Python dict and re-canonicalizes it with
+`ensure_ascii=True`, so it reproduces the recorder's digest for unicode
+payloads. The golden vectors carry unicode, escaped quotes, backslashes and new
+lines precisely to prove that round trip.
+
+Payload hash (`compute_payload_hash`): `SHA-256(canonical_json(payload))`,
+lowercase hex, 64 characters. The contract never trusts a case file's declared
+`payload_hash`; it re-derives it from the payload object.
+
+Event hash (`compute_event_hash`). Let `|` be the single ASCII vertical bar,
+used as a separator over the raw field strings (the fields are concatenated, not
+canonicalized). The base input is always:
+
+```
+deal_id | actor | event_type | payload_hash | previous_event_hash | timestamp
+event_hash = SHA-256(that string), lowercase hex
+```
+
+Version 1 (legacy, unsigned): the base six fields, exactly as above, and
+nothing else. The row must have `signature = null` (or the key absent) and
+`client_timestamp = null` (or absent).
+
+Version 2 (signed): the base six fields plus the signature and the client
+timestamp, appended with two more separators:
+
+```
+deal_id | actor | event_type | payload_hash | previous_event_hash | timestamp | signature | client_timestamp
+```
+
+where `client_timestamp` contributes the empty string when it is absent
+(`client_timestamp or ""`). The signature bytes therefore live inside the chain:
+swap them and the event hash stops matching the anchored head, even though the
+contract cannot itself recover the signer (there is no ecrecover inside the
+GenVM contract runtime; see the limitation note below).
+
+Version selection on the contract side is taken from `sig_version` (1 or 2), a
+structural field, never from `chain_integrity`. A `sig_version` that is not
+exactly the integer 1 or 2, or that disagrees with the presence of `signature`
+(a version 1 row carrying a signature, or a version 2 row without one), is a
+CHAIN_MISMATCH. Because the recomputed event hash is also compared against each
+declared `event_hash` and the recomputed head against the anchored head, lying
+about `sig_version` cannot forge a match: it only produces a hash that agrees
+with nothing.
+
+Chain linkage (`recompute_head`). Start at `previous = "GENESIS"`. For each event
+in array order: require `event.previous_event_hash == previous`; re-derive
+`payload_hash` from the payload; compute the event hash with the version's
+formula; require it to equal the declared `event_hash`; then set
+`previous = event_hash`. The head is the last event hash. An empty event list has
+no head (the literal `GENESIS` is not a 64-hex digest), so it cannot match an
+anchor and is a CHAIN_MISMATCH.
+
+The signed message an actor signs per event (EIP-191 `personal_sign`, domain tag
+`flight-recorder-event-v1`) is a newline-join of: domain, deal_id,
+previous_event_hash, event_type, payload_hash, client_timestamp. That is the
+signature the contract embeds into the version 2 hash; it is not itself verified
+on-chain.
+
+#### Deterministic bounds (floor and ceiling, both sides)
+
+Named constants shared by the off-chain recompute and mirrored in the contract,
+so a party cannot hand the validators unbounded work and so every window has both
+ends:
+- Case file body: at least `MIN_CASE_FILE_BYTES` (20, already an UNREACHABLE floor)
+  and at most `MAX_CASE_FILE_BYTES` (1 MiB; over the ceiling is CHAIN_MISMATCH).
+- Event count: at least 1 and at most `MAX_CHAIN_EVENTS` (256).
+- Per string field ceilings: deal_id 100 (matches `open_deal`), event_type 64,
+  actor 128, signature 200, client_timestamp 64, timestamp 64. Each must be a
+  non-empty string of the right type or it is a CHAIN_MISMATCH.
+- Per payload: canonicalized UTF-8 at most `MAX_EVENT_PAYLOAD_BYTES` (32768),
+  matching the recorder's write-time bound.
+
+#### On-chain signature verification is not possible this round (limitation)
+
+The GenVM contract runtime exposes no secp256k1 or ecrecover. The off-chain SDK
+has `Account.recover_message`, but it is not importable from inside a contract,
+which sees only a restricted standard library (the contract already relies on
+`json`, `hashlib`, `datetime`). So the contract embeds each version 2 signature
+into the chain hash (tampering with it breaks the head) but cannot recover the
+signer address itself. Event signatures remain verifiable off-chain from the
+exported case file, and the API enforces them at write time (recovered signer
+equals the claimed actor, the actor is a deal party, and the actor is the
+authenticated session). This is stated plainly in the README threat model and in
+AUDIT.md rather than papered over.
+
+#### D6 shipped (deployment, evidence, hardening)
+
+- Contract change landed in `contracts/settlement.py`: `resolve` calls a pure
+  `_recompute_head` (mirroring `src/hash_chain.recompute_head`) and pays only
+  when its own digest equals the anchored delivery head. `TAMPERED` is removed
+  from `EVIDENCE_VERDICTS`; the new discrete `CHAIN_MISMATCH` shares
+  `ANCHOR_MISMATCH`'s refund outcome and needs exact validator consensus. The
+  validator prompt no longer carries `chain_integrity` or the declared head, and
+  an over-`MAX_CASE_FILE_BYTES` body is refused before parsing.
+- Golden vectors landed: `tests/golden/chain_vectors.json` (23 vectors, 11 MATCH
+  and 12 CHAIN_MISMATCH) generated by `tests/golden/generate_chain_vectors.py`,
+  asserted off-chain in `tests/test_chain_vectors.py` and driven through the
+  contract source in `tests/direct/test_chain_recompute.py`.
+- `tests/test_case_files.py` guards that every published case file under
+  `demo/case_files/` recomputes to its declared head, so a data edit cannot
+  quietly desynchronize the anchor; `.gitattributes` pins LF endings.
+- Deployed D6 `0x51A54D74e86159482F2E57b8d4744c7Ba44D7043` on studio-dev chain
+  61997 (deploy tx `0x2edb7e3e78f45b50866fc0a1b41326a7091a4033889fc9c126616687a59edb9a`,
+  verified FINALIZED through the explorer JSON API). D5 and earlier stay on-chain.
+- Live proof (`scripts/adversarial_live.js`, 12/12 pass, explorer-verified): a
+  real `CHAIN_MISMATCH` refund, the honest path still paying, and the prior
+  refusals. A fully honest live `APPROVED` that reaches the LLM round could not
+  complete because studio-dev fails to estimate the fee for such a `resolve`;
+  that limitation is recorded in `scripts/e2e_results.md`, not hidden.
+- Security round: `npm audit` and `npm audit --omit=dev` ran clean (0
+  vulnerabilities); a manual git-history secret scan found nothing (only the
+  documented public devnet test key). `bandit` and `pip-audit` could not be
+  re-run this round because PyPI is unreachable from this environment (DNS
+  resolution for `files.pythonhosted.org` fails); `gitleaks` was not installable.
+  The Qoder cloud L2/L3 tiers did not run on this plan. All of this is stated
+  honestly in the AUDIT.md "D6 rescan" table.
+- Hardening: `POST /api/auth/logout` deletes the bearer token
+  (`src/db.delete_session`), so a leaked or shared session is cut short instead
+  of living out its seven-day expiry; covered by `tests/test_session_logout.py`.
+- Test totals this session: direct 80 passed, off-chain 93 passed / 12 skipped
+  (173 total). CI on PR #7 was green before the logout tests; the final CI run
+  is the authoritative full count.
+
 ### Oct 10 - v5 work started (D5 branch): signed events, then an atomic head anchor
 
 Branch `d5-signed-events-anchor`. Nothing deployed yet; D4

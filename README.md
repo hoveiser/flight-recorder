@@ -87,9 +87,12 @@ API docs: http://localhost:8000/docs
 
     pytest tests/ -v
 
-Expected: **105 passed** (50 off-chain + 55 direct-mode). The 29 direct-mode tests that
-existed before this round are still there, adapted to the new required `dispute` argument,
-and 26 more cover signing, the anchor and its races. Direct mode needs Linux or macOS (gltest
+Expected: **173 passed, 12 skipped** (93 off-chain + 80 direct-mode). The direct-mode suite is
+`tests/direct/test_settlement.py` (55) plus `tests/direct/test_chain_recompute.py` (25), which
+drives all 23 golden hash-chain vectors through the deployed contract source plus the size-ceiling
+and missing-anchor guards. The 12 skips are the off-chain chain-vector checks that only apply to a
+self-consistent chain; the adversarial vectors intentionally have no head to match and are asserted
+as mismatches instead. Direct mode needs Linux or macOS (gltest
 cannot inject its fd-0 message on Windows), so on Windows the off-chain half runs locally and
 CI on Ubuntu is the authoritative full run.
 
@@ -110,9 +113,9 @@ The Settlement contract is deployed on GenLayer Studio Next, whose network is `s
 (chain ID `61997`, RPC `https://studio-dev.genlayer.com/api`). Throughout this repository the
 environment is called studio-dev.
 
-- Contract address: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` (v5 / D5, deployed 2026-10-10)
-- Explorer: https://explorer-studio-dev.genlayer.com/address/0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1
-- Previous deployments, all still on-chain and verifiable: `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` (v4 / D4), `0x223323CE1b755313212FaD13016543C0E4E63E12` (audited v3 / D3), `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` (v2 / D2) and `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` (v1 / D1). The transaction hashes documented in `scripts/e2e_results.md` and on the site belong to the deployment they were run against, and each row says which.
+- Contract address: `0x51A54D74e86159482F2E57b8d4744c7Ba44D7043` (v6 / D6, deployed 2026-10-12)
+- Explorer: https://explorer-studio-dev.genlayer.com/address/0x51A54D74e86159482F2E57b8d4744c7Ba44D7043
+- Previous deployments, all still on-chain and verifiable: `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` (v5 / D5), `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` (v4 / D4), `0x223323CE1b755313212FaD13016543C0E4E63E12` (audited v3 / D3), `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` (v2 / D2) and `0x4bA38e58f0d413405C0c4F079328ff7C5848Fa35` (v1 / D1). The transaction hashes documented in `scripts/e2e_results.md` and on the site belong to the deployment they were run against, and each row says which.
 
 Run the end-to-end flow from the repository root:
 
@@ -131,13 +134,14 @@ Run the direct Settlement tests:
 | **v2**            | `0x8BC572Bec7EAA3C6662a9da3E38b4233a35bF97D` | Superseded by `0x223323CE…` on 2026-09-24; see Deployment history. Remains on-chain as historical evidence and carries the four live scenarios, including the APPROVED happy path. See `scripts/e2e_results.md` for the raw run output.                                                                                                                                                                                                                           |
 | **v3-audit** (D3) | `0x223323CE1b755313212FaD13016543C0E4E63E12` | Superseded by **v4 / D4** on 2026-09-26; remains on-chain and verifiable. Repo-HEAD hardening: payout atomicity, agreement and anchor verification, deterministic time, exception-path retry counter, and a fail-closed timeout — plus audit patches **F4** (anchor is immutable once written) and **F6** (agreement digest accepted in both Python and browser canonical forms). Findings **F1, F2 and F3 were still open here**; they are fixed in v4. Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve = `AGREEMENT_MISMATCH` refund → payout. |
 | **v4** (D4)       | `0xfD91f7eDCa653702ACe1F040F4d56d35e674c750` | Superseded by **v5 / D5** on 2026-10-10; remains on-chain and verifiable. Everything in v3-audit plus the three findings that survived it: **F1** (escrow is exactly `gl.message.value`, never caller-declared), **F2** (an `unresolvable` deal is refunded by `timeout_release` once the appeal window closes) and **F3** (only a party can `resolve`), plus validator payload depth (resolve sees the last ≤5 event payloads, not just counters) and appeal-with-new-evidence. Validated with `scripts/e2e_demo.js`: open_deal → dispute → resolve → finalize, all four FINALIZED. |
-| **v5** (D5)       | `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` | **Current on-chain deployment** (2026-10-10). The atomic head anchor: `dispute(deal_id, case_file_url, case_file_hash, chain_head)` takes the sealed chain head as a required fourth argument (64 lowercase hex) and writes it as the `delivery` anchor in the same transaction, or reverts if a different head is already on record. The anchor can never be overwritten, `ANCHOR_MISMATCH` now gates every disputed deal instead of only pre-anchored ones, and a missing anchor fails closed. Fund-moving verdicts still require exact consensus on the discrete labels. Deployed with `node scripts/deploy_contract.js` (deploy tx `0xee4f5955ecded5fd6d7ea493fb21dc79e2a6ba8aa5a853d6df457cb2ee10d500`). Validated with `scripts/e2e_demo.js` on deal 4 and with ten adversarial cases in `scripts/adversarial_live.js` (10/10, every hash verified against the explorer JSON API); see `scripts/e2e_results.md`. |
+| **v5** (D5)       | `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` | Superseded by **v6 / D6** on 2026-10-12; remains on-chain and verifiable. The atomic head anchor: `dispute(deal_id, case_file_url, case_file_hash, chain_head)` takes the sealed chain head as a required fourth argument (64 lowercase hex) and writes it as the `delivery` anchor in the same transaction, or reverts if a different head is already on record. The anchor can never be overwritten, `ANCHOR_MISMATCH` now gates every disputed deal instead of only pre-anchored ones, and a missing anchor fails closed. Fund-moving verdicts still require exact consensus on the discrete labels. Deployed with `node scripts/deploy_contract.js` (deploy tx `0xee4f5955ecded5fd6d7ea493fb21dc79e2a6ba8aa5a853d6df457cb2ee10d500`). Validated with `scripts/e2e_demo.js` on deal 4 and with ten adversarial cases in `scripts/adversarial_live.js` (10/10, every hash verified against the explorer JSON API); see `scripts/e2e_results.md`. |
+| **v6** (D6)       | `0x51A54D74e86159482F2E57b8d4744c7Ba44D7043` | **Current on-chain deployment** (2026-10-12). The contract now recomputes the event hash chain itself. `resolve` walks the chain from genesis with the same canonical serialization the recorder uses, re-derives every `payload_hash` and `event_hash`, and pays only when its own recomputed head equals the delivery head anchored on-chain at dispute. It reads no verdict-like field from the fetched case file: `chain_integrity`, its `verification` flag and its declared `last_hash` are ignored and no longer appear in the validator prompt. A mismatch, a malformed structure, an over-size case file or an unknown hash version returns the new discrete label `CHAIN_MISMATCH` (same refund outcome as `ANCHOR_MISMATCH`, exact validator consensus required); the `TAMPERED` verdict is removed. This closes audit findings **F5** and **F23**. Deployed with `node scripts/deploy_contract.js` (deploy tx `0x2edb7e3e78f45b50866fc0a1b41326a7091a4033889fc9c126616687a59edb9a`). Validated by 23 golden chain vectors through the contract source in direct mode (`tests/direct/test_chain_recompute.py`), twelve adversarial live cases including a `CHAIN_MISMATCH` refund (`scripts/adversarial_live.js`, `scripts/e2e_results.md`), all hashes verified against the explorer JSON API. Residual, documented: the GenVM runtime has no ecrecover, so per-event signature verification stays off-chain. |
 
-**Current status:** the v5 contract is live at `0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1` (D5). The earlier contracts are **not** deleted or forked. D1 to D4 stay on-chain, so every transaction hash referenced in this README, `JUDGING.md`, `scripts/e2e_results.md` and `index.html` still resolves to a real record. What changed is only _which_ address new writes go to. Test coverage is 105 (50 off-chain + 55 direct-mode); a full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md). Findings **F1, F2 and F3 were fixed in v4 and are still fixed in D5**; this round adds **F16 to F24** from the API and caller audit, and the honest limitation about the case file's self-reported chain is documented as **F23** in [AUDIT.md](AUDIT.md).
+**Current status:** the v6 contract is live at `0x51A54D74e86159482F2E57b8d4744c7Ba44D7043` (D6). The earlier contracts are **not** deleted or forked. D1 to D5 stay on-chain, so every transaction hash referenced in this README, `JUDGING.md`, `scripts/e2e_results.md` and `index.html` still resolves to a real record. What changed is only _which_ address new writes go to. Test coverage is 173 (93 off-chain + 80 direct-mode); a full security and correctness audit of the contract is in [AUDIT.md](AUDIT.md). Findings **F1, F2 and F3 were fixed in v4 and are still fixed in D6**; D5 added **F16 to F24** from the API and caller audit plus the immutable head anchor, and **D6 closes F5 and F23** by making `resolve` recompute the hash chain itself instead of trusting the case file's self-reported chain.
 
 ## Versioning
 
-On-chain deployments are numbered D1 (`0x4bA3…`), D2 (`0x8BC5…`, superseded), D3 (`0x2233…`, superseded), D4 (`0xfD91…`, superseded) and D5 (`0xc930…`, live). Code generations are numbered v3 (the audited hardening deployed as D3), v4 (F1/F2/F3 fixes, validator payload depth and appeal evidence, deployed as D4) and v5 (signed events off-chain plus the atomic head anchor on-chain, deployed as D5). A code generation is not a deployment until it appears in Deployment history, and a deployment is not "current" until its address is in the line above.
+On-chain deployments are numbered D1 (`0x4bA3…`), D2 (`0x8BC5…`, superseded), D3 (`0x2233…`, superseded), D4 (`0xfD91…`, superseded), D5 (`0xc930…`, superseded) and D6 (`0x51A5…`, live). Code generations are numbered v3 (the audited hardening deployed as D3), v4 (F1/F2/F3 fixes, validator payload depth and appeal evidence, deployed as D4), v5 (signed events off-chain plus the atomic head anchor on-chain, deployed as D5) and v6 (the contract recomputes the hash chain itself and adds `CHAIN_MISMATCH`, deployed as D6). A code generation is not a deployment until it appears in Deployment history, and a deployment is not "current" until its address is in the line above.
 
 ## API Reference
 
@@ -358,9 +362,12 @@ a recorder, never by hand):
       }
     }
 
-`chain_integrity.last_hash` is the head a dispute must anchor, and `verification` and
-`signature_status` are deliberately two answers: a chain can be internally consistent and
-still contain unsigned legacy rows, or carry valid signatures over an edited link.
+`chain_integrity.last_hash` is the head an honest dispute anchors, and `verification` and
+`signature_status` are deliberately two answers about the exported log: a chain can be internally
+consistent and still contain unsigned legacy rows, or carry valid signatures over an edited link.
+Since D6 the contract does not read these fields to decide a verdict: it recomputes the chain
+itself from the events and compares its own digest to the anchored delivery head, so a
+self-reported `PASS` binds nothing.
 
 ## Project Structure
 
@@ -377,7 +384,13 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
     │   ├── test_signed_events.py    # Signature and replay tests (18 tests)
     │   ├── test_api_hardening.py    # API guard tests, findings F16-F19 (15 tests)
     │   ├── test_agreement_hash_canonicalization.py  # Cross-runtime hash tests (3 tests)
-    │   └── direct/test_settlement.py # Direct-mode tests (55 tests)
+    │   ├── test_chain_vectors.py    # Golden hash-chain vectors (48 tests)
+    │   ├── test_case_files.py       # Published case files recompute to their head (4 tests)
+    │   ├── test_session_logout.py   # Session revocation hardening (3 tests)
+    │   ├── golden/                  # chain_vectors.json and its generator
+    │   └── direct/
+    │       ├── test_settlement.py   # Direct-mode contract tests (55 tests)
+    │       └── test_chain_recompute.py # 23 golden vectors + bounds driven through the contract (25 tests)
     ├── demo/
     │   ├── signed_client.py         # Python client that logs in and signs every event
     │   ├── make_case_file.py        # Regenerates the published case file from a real run
@@ -387,7 +400,7 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
     │   ├── event_signing.js         # Node equivalent of signed_client.py
     │   ├── wallet_key.js            # Reads the throwaway key from .env, never prints it
     │   ├── explorer_verify.js       # Verifies a tx hash against the explorer JSON API
-    │   ├── adversarial_live.js      # Ten adversarial cases against the live contract
+    │   ├── adversarial_live.js      # Twelve adversarial cases against the live contract
     │   ├── settle_open_deals.js     # Settles deals a run left behind
     │   └── deploy_contract.js, e2e_demo.js, run_live_scenarios.js
     └── README.md
@@ -411,12 +424,18 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
 - **Omission:** the chain cannot prove an event was NOT skipped. The seal plus the head anchored
   by the dispute pin the log at one point in time and make it immutable afterwards; periodic
   auto-anchoring while a deal is still live is on the roadmap.
-- **Self-reported chain, still open (F5 and F23):** the contract compares the anchored head with
-  the head the case file declares for itself. It does not recompute the chain from the events.
-  D5 makes that head immutable and forces both parties to agree to one before any adjudication,
-  and the recorder seals the log so it cannot grow afterwards, but a case file that lies about
-  its own head consistently with the anchored digest still passes this gate. Closing it means the
-  contract hashing each link itself, which is the next round's work. See AUDIT.md F5 and F23.
+- **Self-reported chain: CLOSED in D6 (was F5 and F23).** Before D6 the contract compared the
+  anchored head with the head the case file declared for itself, and read the
+  `chain_integrity.verification` flag straight out of the untrusted JSON. D6 removes both
+  trusts: `resolve` recomputes the event chain from genesis with the recorder's own canonical
+  serialization, re-derives every `payload_hash` and `event_hash`, and pays only when its own
+  recomputed head equals the delivery head anchored on-chain at dispute. `chain_integrity`, its
+  verification flag and its declared head are ignored and no longer reach the validator prompt; a
+  mismatch, a malformed structure, an over-size case file or an unknown hash version is the
+  discrete `CHAIN_MISMATCH` refund. Residual, documented: the GenVM runtime has no ecrecover, so
+  per-event signatures are embedded in the hash but not verified on-chain, and a party that
+  fabricates a fully self-consistent chain anchored to its own fabricated head is not caught by
+  recomputation alone. See AUDIT.md F5 and F23.
 - **Timestamps:** the client timestamp is now bounded in both directions (900s of past drift, 300s
   into the future) and is inside the signed message, so it cannot be re-dated after the fact.
   Server receipt time is still the ordering the chain records; the on-chain anchor is what makes
@@ -434,9 +453,11 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
 - **Prompt injection:** validators receive evidence inside data tags with instructions to ignore
   embedded commands; adversarial case files are regression-tested by
   `test_prompt_injection_does_not_change_verdict`.
-- Live on-chain instance is **D5** (`0xc93007ac5f62E6f9785B425A612bdAc1E2b245F1`): the atomic head
-  anchor in `dispute`. D4 (`0xfD91f7…`) carries the audited v3 hardening plus F4 and F6 and the F1,
-  F2 and F3 fixes; D2 (`0x8BC5…`) and D3 (`0x223323CE…`) remain on-chain as historical evidence.
+- Live on-chain instance is **D6** (`0x51A54D74e86159482F2E57b8d4744c7Ba44D7043`): the contract
+  recomputes the event hash chain itself and pays only on its own digest matching the anchored
+  delivery head. D5 (`0xc930…`) added the atomic head anchor in `dispute`; D4 (`0xfD91f7…`) carries
+  the audited v3 hardening plus F4 and F6 and the F1, F2 and F3 fixes; D2 (`0x8BC5…`) and D3
+  (`0x223323CE…`) remain on-chain as historical evidence.
 - **Escrow amount is caller-declared, not value-derived (audit CRITICAL) — FIXED in D4.**
   Previously `open_deal` took an `amount` and only fell back to `gl.message.value` when it was
   zero, so a caller could record more escrow than it sent and later withdraw that larger figure
@@ -455,10 +476,12 @@ still contain unsigned legacy rows, or carry valid signatures over an edited lin
   milestone with a _different_ head is now rejected, so the anchored chain head a case file is
   checked against is immutable once written. Fixed in D3 (`0x223323CE…`) and carried into D4; the D2
   contract still on-chain overwrites. See AUDIT.md F4.
-- **`chain_integrity.verification` in a case file is self-attested (audit MEDIUM).** The
-  contract reads the PASS/FAIL flag out of the same untrusted JSON whose hash it was given,
-  so that one check proves the file claims integrity, not that it has any. The on-chain
-  anchor and the agreement hash are the checks that bind it. See AUDIT.md F5.
+- **`chain_integrity.verification` in a case file: no longer trusted (was audit MEDIUM, F5).**
+  Before D6 the contract read the PASS/FAIL flag out of the same untrusted JSON whose hash it was
+  given, so that check proved the file claims integrity, not that it has any. D6 removed the
+  reliance: `resolve` recomputes the chain from the events themselves and ignores
+  `chain_integrity` entirely. The on-chain anchor and the agreement hash remain the binding
+  checks. See AUDIT.md F5.
 - Direct-mode tests need Linux/macOS: gltest's loader replaces fd 0 with a temp file and
   unlinks it while still open, which Windows rejects (`WinError 32`). Run them in the
   codespace or CI.
@@ -479,9 +502,10 @@ Known gaps, stated plainly rather than discovered later:
 - **Signed events as the write path: DONE (D5).** New writes are refused without a signature
   (`HTTP 400`), and pre-existing unsigned rows are reported as `UNSIGNED_LEGACY` rather than
   silently trusted or rewritten.
-- **Recompute the chain inside the contract (F5, F23).** The last step that turns the evidence
-  layer from self-attested into independently verified: `resolve` would hash each link of the
-  exported log itself instead of reading `chain_integrity` out of the file it is judging.
+- **Recompute the chain inside the contract (F5, F23): DONE (D6).** The step that turned the
+  evidence layer from self-attested into independently verified is shipped: `resolve` now hashes
+  each link of the exported log itself and pays only when its own head matches the anchored
+  delivery head, instead of reading `chain_integrity` out of the file it is judging.
 - **Appeal with new evidence — DONE (D4).** `appeal(deal_id, new_case_file_url="")` now accepts an
   optional new URL; when supplied it updates `case_file_url`, clears `case_file_hash` so the next
   `resolve` re-fetches and re-anchors, and returns the deal to `disputed`. The agreement/anchor/chain
@@ -498,6 +522,15 @@ Known gaps, stated plainly rather than discovered later:
   sealed chain head and writes it as the immutable `delivery` anchor in the same transaction;
   `ANCHOR_MISMATCH` gates every disputed deal and fails closed when no anchor exists. Validated
   by a full `scripts/e2e_demo.js` lifecycle and ten adversarial live cases. See AUDIT.md and
+  `scripts/e2e_results.md`.
+- **Deploy the chain recompute as D6: DONE (`0x51A54D…`, 2026-10-12).** `resolve` recomputes the
+  event hash chain from genesis and pays only when its own digest equals the anchored delivery
+  head, so `chain_integrity.verification` and the declared head no longer gate a verdict; a
+  mismatch or a malformed/over-size case file is the discrete `CHAIN_MISMATCH` refund and the
+  `TAMPERED` verdict is gone. Closes F5 and F23. Validated by 23 golden chain vectors in direct
+  mode, twelve adversarial live cases including a `CHAIN_MISMATCH` refund, and a full
+  `scripts/e2e_demo.js` run, all verified against the explorer JSON API. Session logout / token
+  revocation (`POST /api/auth/logout`) shipped alongside it. See AUDIT.md and
   `scripts/e2e_results.md`.
 - **Hosted evidence API — DONE.** The off-chain recorder now runs on
   PythonAnywhere (`https://hreicher.pythonanywhere.com`), which `index.html`

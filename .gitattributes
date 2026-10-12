@@ -1,0 +1,25 @@
+# Pin LF line endings so the bytes a case file hashes are identical across
+# tools and platforms. The published happy-path case file has a fixed SHA-256
+# (index.html EXPECTED_HASH, scripts/e2e_results.md); a CRLF checkout would
+# silently change that digest and every anchored dispute with it.
+* text=auto eol=lf
+
+*.json text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Binary assets are never line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.svg binary
