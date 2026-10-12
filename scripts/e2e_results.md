@@ -378,3 +378,109 @@ transaction rather than inferred from the transaction status.
 
 After this, every deal on D5 is in a settled state and no test escrow is locked: `get_payouts()`
 returns six refunds of 100000000000000000 wei, all to `0x3de43AA2f7162c80af98abe78222aE0Cdf83c506`.
+
+
+---
+
+# E2E demo run 2026-10-12T10:40:03.828Z
+# Settlement E2E Demo Summary
+
+- Contract: 0x51A54D74e86159482F2E57b8d4744c7Ba44D7043
+- Network: studio-dev
+- Worker: 0x1111111111111111111111111111111111111111
+- On-chain deal: 3 (demo_scraper_1791801482764), anchored delivery head da22a5db81035c54bbee3c6aec0a526d8addef31dcf1877b478581724f88ae98
+- Off-chain deal: demo_scraper_1791801523123 (2 signed events, sealed at da22a5db81035c54bbee3c6aec0a526d8addef31dcf1877b478581724f88ae98)
+- Case file: https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json
+- Note: this static case file carries no definition_of_done, so the expected
+  outcome is the DISAGREEMENT path (labeled AGREEMENT_MISMATCH) refunding the
+  client inside resolve(). It exercises the pipeline, not a happy verdict.
+- Finalize: not needed, resolve() already settled the deal (status refunded)
+- Final deal: {"client": "0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E", "worker": "0x1111111111111111111111111111111111111111", "external_deal_id": "demo_scraper_1791801482764", "agreement_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "amount": 100000000000000000, "status": "refunded", "milestones": {"delivery": "da22a5db81035c54bbee3c6aec0a526d8addef31dcf1877b478581724f88ae98"}, "verdict": "AGREEMENT_MISMATCH", "verdict_at": 1791801563, "appeal_window_sec": 300, "appeals_used": 0, "fetch_failures": 0, "case_file_hash": "2828c1d269bd9c80d634131ec107ac69f1cfc3bf1f98d24c112c825c8acd7902", "payout_status": "paid", "created_at_ts": 1791801484, "case_file_url": "https://raw.githubusercontent.com/microsoft/TypeScript/main/package.json", "reasoning": "Case file has no definition_of_done"}
+- Final payouts: [{"to": "0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E", "amount": 100000000000000000}, {"to": "0xE68c0b64Bf1554801832d98Eb3B1597F8905c95E", "amount": 100000000000000000}]
+- Total fees spent: 200761272800031056 wei
+
+## Transactions
+
+| Step | TX hash | Explorer | Fee (wei) |
+| --- | --- | --- | ---: |
+| open_deal | 0x6f40ba1bc9bb314225b879ee7666170af2b734fe0f9a79acb53c86f542b05027 | https://explorer-studio-dev.genlayer.com/tx/0x6f40ba1bc9bb314225b879ee7666170af2b734fe0f9a79acb53c86f542b05027 | 100000000000010352 |
+| dispute | 0x2086e11c894842da7b945779d9e15935c2c6eb3d53842053f830ed9bfbac500b | https://explorer-studio-dev.genlayer.com/tx/0x2086e11c894842da7b945779d9e15935c2c6eb3d53842053f830ed9bfbac500b | 100000000000010352 |
+| resolve | 0x3f55f3eb51f7cdd20c3a3eb632e86fb681aa2309363c614b8afded9c9322002b | https://explorer-studio-dev.genlayer.com/tx/0x3f55f3eb51f7cdd20c3a3eb632e86fb681aa2309363c614b8afded9c9322002b | 761272800010352 |
+
+## D6 live adversarial run (Oct 12, 2026), contract `0x51A54D74e86159482F2E57b8d4744c7Ba44D7043`
+
+This deployment closes F5: `resolve()` recomputes the event hash chain itself and
+pays only when its own digest equals the delivery head anchored at dispute. It no
+longer reads `chain_integrity.verification` or the case file's declared head.
+
+Deploy tx `0x2edb7e3e78f45b50866fc0a1b41326a7091a4033889fc9c126616687a59edb9a` ->
+FINALIZED, `to` = the D6 address above. Verified through the explorer JSON API
+(`GET /api/transactions/{hash}`), not just the RPC the script polls.
+
+Run with: `node scripts/adversarial_live.js`. Case file served to the validator
+network: the published `demo/case_files/happy_path.json` (digest
+`0ae7f1ad7eca720eaefd9e651e9c60fe258648ac6a19cc58e4d2c896dff12908`, declared head
+`33d588cbd07c6949b41f87cce222c9dcce66bebb4cae5130e1523bab79643771`). A party, and
+the publicly committed GenLayer devnet test key, plays the counterparty.
+
+Summary: 12 cases, 12 passed, 0 failed, 0 state problems. Every transaction was
+confirmed FINALIZED by the explorer and its execution result checked
+(FINISHED_WITH_RETURN means the method ran, FINISHED_WITH_ERROR means the guard
+reverted it), and each deal's on-chain state was read back after every attempt.
+
+| case | actor | call | wanted | on-chain guard result | execution | result |
+| --- | --- | --- | --- | --- | --- | --- |
+| open_deal | client | open_deal | success | deal 1 funded | FINISHED_WITH_RETURN | pass |
+| missing_head | worker | dispute | revert | chain_head must be 64 lowercase hex characters | FINISHED_WITH_ERROR | pass |
+| non_party_dispute | stranger | dispute | revert | Only parties | FINISHED_WITH_ERROR | pass |
+| anchor_head_a | worker | anchor_milestone | success | delivery anchored | FINISHED_WITH_RETURN | pass |
+| wrong_head_after_anchor | client | dispute | revert | ANCHOR_MISMATCH at dispute time | FINISHED_WITH_ERROR | pass |
+| anchor_overwrite | worker | anchor_milestone | revert | Milestone already anchored | FINISHED_WITH_ERROR | pass |
+| finalize_out_of_order | client | finalize | revert | Not adjudicated | FINISHED_WITH_ERROR | pass |
+| resolve_by_stranger | stranger | resolve | revert | Only parties can resolve | FINISHED_WITH_ERROR | pass |
+| zero_value_open_deal | client | open_deal | revert | open_deal requires payable value | FINISHED_WITH_ERROR | pass |
+| honest_dispute_with_anchored_head | client | dispute | success | head on record accepted | FINISHED_WITH_RETURN | pass |
+| chain_anchor_wrong_head | client | dispute | success | anchors a head the events cannot produce | FINISHED_WITH_RETURN | pass |
+| chain_mismatch_refunds | client | resolve | success | recomputed head != anchor -> CHAIN_MISMATCH, refunded | FINISHED_WITH_RETURN | pass |
+
+The D6-specific pair, on a separate deal opened against the happy-path agreement:
+
+- `chain_anchor_wrong_head` tx `0x05ac01b3d1c2c063ef926a9ebfe6b8af80bf0ca94ea6427da78aabdb60178708`:
+  dispute serves the public happy path but anchors `HEAD_B` (`b` * 64), a head the
+  events do not produce. On-chain state after: `status` disputed,
+  `milestones.delivery` = `HEAD_B`. Verified FINALIZED.
+- `chain_mismatch_refunds` tx `0x1b7a43ad5b493de2cdc6b3b3889b4cfbb5ca1935c2453844536d9e891e9ed1eb`:
+  resolve re-fetches the file, recomputes the chain (head `33d588cb...`), sees it
+  does not equal the anchored `HEAD_B`, and lands on `verdict`
+  `CHAIN_MISMATCH`, `status` `refunded`, `payout_status` `paid` to the client.
+  `get_payouts()` recorded the refund. This is F5 caught live: the contract did
+  the hashing itself and refused to pay on a head mismatch, with the model never
+  consulted. Verified FINALIZED.
+
+Scope note, stated honestly: the structural tamper variants (edited payload with
+a lying PASS flag, reordered events, dropped middle event, truncated tail, extra
+event appended after the anchored head, duplicated event, tampered signature
+field, wrong field type, unknown version, oversized body, event-count ceiling)
+are each proven deterministically by the golden vectors run through this same
+contract source in direct mode (`tests/direct/test_chain_recompute.py`, 23
+vectors). Reproducing them live would mean hosting mutated case files on a URL
+the validator network can fetch, which is out of scope for this run; the live run
+above exercises the anchor-versus-recompute decision end to end on real
+validator-fetched bytes.
+
+### Honest open and dispute on D6 (partial), resolve blocked by a chain quirk
+
+`SCENARIOS=happy node scripts/run_live_scenarios.js` opened a deal
+(`0x82a6ccd5b19ded2a9766361831563c9ee0d4fbd6ac2adf423e4d12c36ecad3ec`, FINALIZED)
+and disputed the public happy path anchoring its real head `33d588cb...`
+(`0x313d690aaa8e56e72fbc792d3858add45df3c1a398d7d1edc1055f5078072957`, FINALIZED),
+both verified through the explorer JSON API. The resolve step then failed before
+submission with `sim_estimateTransactionFees: execution failed`: studio-dev cannot
+simulate the fee of a resolve that reaches the LLM round, so the harness's
+estimate-first path aborts. This is an environment limitation of this round's
+live run, not a contract behavior: a resolve that returns before the model (the
+CHAIN_MISMATCH case above) estimates and executes fine. That the honest chain
+still clears the new recompute gate is proven deterministically by the MATCH
+golden vectors run through this same contract source in direct mode and in CI
+(`tests/direct/test_chain_recompute.py`, all 11 honest vectors land on APPROVED).
+
